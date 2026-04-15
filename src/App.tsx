@@ -607,7 +607,123 @@ const ImgUploader = ({ value, onChange, className, children }: { value?: string;
   );
 };
 
-// SVG map polygon drawer
+// ─── Calcula área do polígono em hectares (Shoelace + fator de conversão) ───
+const calcAreaHa = (pts: [number, number][]): number => {
+  if (pts.length < 3) return 0;
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  let area = 0;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const xi = toRad(pts[i][1]) * Math.cos(toRad((pts[i][0] + pts[j][0]) / 2));
+    const xj = toRad(pts[j][1]) * Math.cos(toRad((pts[i][0] + pts[j][0]) / 2));
+    area += xi * toRad(pts[j][0]) - xj * toRad(pts[i][0]);
+  }
+  return Math.abs((area * R * R) / 2) / 10000;
+};
+
+// ─── Componente de mapa reutilizável (somente visualização) ───
+const LeafletMap = ({ points, height = 300, zoom = 14 }: { points: [number, number][]; height?: number; zoom?: number }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const center: [number, number] = points.length > 0
+      ? [points.reduce((s, p) => s + p[0], 0) / points.length, points.reduce((s, p) => s + p[1], 0) / points.length]
+      : [-15.77972, -47.92972];
+    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false }).setView(center, zoom);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
+    if (points.length > 2) {
+      L.polygon(points, { color: "#E0FF22", weight: 2, fillOpacity: 0.15 }).addTo(map);
+      points.forEach(p => L.circleMarker(p, { radius: 5, color: "#E0FF22", fillColor: "#E0FF22", fillOpacity: 1, weight: 0 }).addTo(map));
+    }
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+  return <div ref={containerRef} style={{ height, width: "100%" }} />;
+};
+
+// ─── Editor de área em tela cheia ───
+const MapDrawer = ({ name, initialPoints, onSave, onClose }: {
+  name: string; initialPoints: [number, number][]; onSave: (pts: [number, number][]) => void; onClose: () => void;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const polygonRef = useRef<L.Polygon | null>(null);
+  const markersRef = useRef<L.CircleMarker[]>([]);
+  const [points, setPoints] = useState<[number, number][]>(initialPoints?.length > 0 ? initialPoints : []);
+  const [area, setArea] = useState(calcAreaHa(initialPoints || []));
+  const [locating, setLocating] = useState(false);
+
+  const redraw = (pts: [number, number][]) => {
+    const map = mapRef.current; if (!map) return;
+    markersRef.current.forEach(m => m.remove()); markersRef.current = [];
+    if (polygonRef.current) { polygonRef.current.remove(); polygonRef.current = null; }
+    pts.forEach(p => {
+      markersRef.current.push(L.circleMarker(p, { radius: 6, color: "#E0FF22", fillColor: "#E0FF22", fillOpacity: 1, weight: 0 }).addTo(map));
+    });
+    if (pts.length > 2) polygonRef.current = L.polygon(pts, { color: "#E0FF22", weight: 2, fillOpacity: 0.15 }).addTo(map);
+    setArea(calcAreaHa(pts));
+  };
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const initCenter: [number, number] = points.length > 0
+      ? [points.reduce((s, p) => s + p[0], 0) / points.length, points.reduce((s, p) => s + p[1], 0) / points.length]
+      : [-15.77972, -47.92972];
+    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false }).setView(initCenter, points.length > 0 ? 14 : 5);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
+    map.on("click", (e: L.LeafletMouseEvent) => {
+      setPoints(prev => { const next: [number, number][] = [...prev, [e.latlng.lat, e.latlng.lng]]; redraw(next); return next; });
+    });
+    mapRef.current = map;
+    if (points.length > 0) redraw(points);
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+
+  const handleUndo = () => setPoints(prev => { const next = prev.slice(0, -1); redraw(next); return next; });
+  const handleClear = () => setPoints(() => { redraw([]); return []; });
+  const handleLocate = () => {
+    setLocating(true);
+    mapRef.current?.locate({ setView: true, maxZoom: 14 });
+    mapRef.current?.once("locationfound", () => setLocating(false));
+    mapRef.current?.once("locationerror", () => setLocating(false));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-bg flex flex-col">
+      <div className="flex items-center justify-between px-4 h-14 border-b border-white/10 bg-bg z-10 shrink-0">
+        <button onClick={onClose} className="flex items-center gap-2 text-white/60 hover:text-text">
+          <X size={18} /><span className="text-[10px] font-bold uppercase tracking-widest">Cancelar</span>
+        </button>
+        <div className="text-center">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-text">{name}</div>
+          {area > 0 && <div className="text-[9px] text-accent font-bold">{area.toFixed(2)} ha calculados</div>}
+        </div>
+        <button onClick={() => { onSave(points); onClose(); }} className="flex items-center gap-2 text-accent text-[10px] font-bold uppercase tracking-widest">
+          <Check size={16} /> Salvar
+        </button>
+      </div>
+      <div className="bg-accent/10 border-b border-accent/20 px-4 py-2 text-center shrink-0">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-accent">Toque no mapa para marcar os vértices da área</p>
+      </div>
+      <div ref={containerRef} className="flex-1" />
+      <div className="flex gap-2 px-4 py-3 border-t border-white/10 bg-bg shrink-0">
+        <button onClick={handleLocate} className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5">
+          {locating ? "..." : <><MapPin size={12} /> Minha localização</>}
+        </button>
+        <button onClick={handleUndo} disabled={points.length === 0} className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-accent hover:text-accent transition-colors disabled:opacity-30">
+          ↩ Desfazer
+        </button>
+        <button onClick={handleClear} disabled={points.length === 0} className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-30">
+          <Trash2 size={12} className="inline mr-1" /> Limpar
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // MapDrawerBtn — botão no formulário que abre o editor de mapa em tela cheia
 const MapDrawerBtn = ({ points, onChange, name }: {
   points: [number, number][];
@@ -1531,164 +1647,6 @@ const SProducao = ({ go }: { go: (s: number) => void }) => {
       </div>
       <BottomNav active={7} onNav={go} />
     </motion.div>
-  );
-};
-
-// ─── Calcula área do polígono em hectares (Shoelace + fator de conversão) ───
-const calcAreaHa = (pts: [number, number][]): number => {
-  if (pts.length < 3) return 0;
-  const R = 6371000; // raio médio da Terra em metros
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  let area = 0;
-  const n = pts.length;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    const xi = toRad(pts[i][1]) * Math.cos(toRad((pts[i][0] + pts[j][0]) / 2));
-    const xj = toRad(pts[j][1]) * Math.cos(toRad((pts[i][0] + pts[j][0]) / 2));
-    area += xi * toRad(pts[j][0]) - xj * toRad(pts[i][0]);
-  }
-  return Math.abs((area * R * R) / 2) / 10000; // m² → ha
-};
-
-// ─── Componente de mapa reutilizável (somente visualização) ───
-const LeafletMap = ({
-  points,
-  height = 300,
-  zoom = 14,
-}: {
-  points: [number, number][];
-  height?: number;
-  zoom?: number;
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const center: [number, number] = points.length > 0
-      ? [points.reduce((s, p) => s + p[0], 0) / points.length, points.reduce((s, p) => s + p[1], 0) / points.length]
-      : [-15.77972, -47.92972];
-
-    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false }).setView(center, zoom);
-    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-      maxZoom: 19,
-    }).addTo(map);
-    if (points.length > 2) {
-      L.polygon(points, { color: "#E0FF22", weight: 2, fillOpacity: 0.15 }).addTo(map);
-      points.forEach(p => L.circleMarker(p, { radius: 5, color: "#E0FF22", fillColor: "#E0FF22", fillOpacity: 1, weight: 0 }).addTo(map));
-    }
-    mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
-
-  return <div ref={containerRef} style={{ height, width: "100%" }} />;
-};
-
-// ─── Editor de área (tela cheia, clique para adicionar pontos) ───
-const MapDrawer = ({
-  name,
-  initialPoints,
-  onSave,
-  onClose,
-}: {
-  name: string;
-  initialPoints: [number, number][];
-  onSave: (pts: [number, number][]) => void;
-  onClose: () => void;
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const polygonRef = useRef<L.Polygon | null>(null);
-  const markersRef = useRef<L.CircleMarker[]>([]);
-  const [points, setPoints] = useState<[number, number][]>(initialPoints?.length > 0 ? initialPoints : []);
-  const [area, setArea] = useState(calcAreaHa(initialPoints || []));
-  const [locating, setLocating] = useState(false);
-
-  const redraw = (pts: [number, number][]) => {
-    const map = mapRef.current; if (!map) return;
-    markersRef.current.forEach(m => m.remove()); markersRef.current = [];
-    if (polygonRef.current) { polygonRef.current.remove(); polygonRef.current = null; }
-    pts.forEach(p => {
-      const m = L.circleMarker(p, { radius: 6, color: "#E0FF22", fillColor: "#E0FF22", fillOpacity: 1, weight: 0 }).addTo(map);
-      markersRef.current.push(m);
-    });
-    if (pts.length > 2) {
-      polygonRef.current = L.polygon(pts, { color: "#E0FF22", weight: 2, fillOpacity: 0.15 }).addTo(map);
-    }
-    setArea(calcAreaHa(pts));
-  };
-
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const initCenter: [number, number] = points.length > 0
-      ? [points.reduce((s, p) => s + p[0], 0) / points.length, points.reduce((s, p) => s + p[1], 0) / points.length]
-      : [-15.77972, -47.92972];
-
-    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false }).setView(initCenter, points.length > 0 ? 14 : 5);
-    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
-    map.on("click", (e: L.LeafletMouseEvent) => {
-      setPoints(prev => {
-        const next: [number, number][] = [...prev, [e.latlng.lat, e.latlng.lng]];
-        redraw(next);
-        return next;
-      });
-    });
-    mapRef.current = map;
-    if (points.length > 0) redraw(points);
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
-
-  const handleUndo = () => setPoints(prev => { const next = prev.slice(0, -1); redraw(next); return next; });
-  const handleClear = () => setPoints(() => { redraw([]); return []; });
-  const handleLocate = () => {
-    setLocating(true);
-    mapRef.current?.locate({ setView: true, maxZoom: 14 });
-    mapRef.current?.once("locationfound", () => setLocating(false));
-    mapRef.current?.once("locationerror", () => setLocating(false));
-  };
-
-  return (
-    <div className="fixed inset-0 z-[300] bg-bg flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-14 border-b border-white/10 bg-bg z-10 shrink-0">
-        <button onClick={onClose} className="flex items-center gap-2 text-white/60 hover:text-text">
-          <X size={18} /> <span className="text-[10px] font-bold uppercase tracking-widest">Cancelar</span>
-        </button>
-        <div className="text-center">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-text">{name}</div>
-          {area > 0 && <div className="text-[9px] text-accent font-bold">{area.toFixed(2)} ha calculados</div>}
-        </div>
-        <button onClick={() => { onSave(points); onClose(); }}
-          className="flex items-center gap-2 text-accent text-[10px] font-bold uppercase tracking-widest">
-          <Check size={16} /> Salvar
-        </button>
-      </div>
-
-      {/* Instrução */}
-      <div className="bg-accent/10 border-b border-accent/20 px-4 py-2 text-center shrink-0">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-accent">
-          Toque no mapa para marcar os vértices da área
-        </p>
-      </div>
-
-      {/* Mapa */}
-      <div ref={containerRef} className="flex-1" />
-
-      {/* Controles */}
-      <div className="flex gap-2 px-4 py-3 border-t border-white/10 bg-bg shrink-0">
-        <button onClick={handleLocate} className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5">
-          {locating ? "..." : <><MapPin size={12} /> Minha localização</>}
-        </button>
-        <button onClick={handleUndo} disabled={points.length === 0}
-          className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-accent hover:text-accent transition-colors disabled:opacity-30">
-          ↩ Desfazer
-        </button>
-        <button onClick={handleClear} disabled={points.length === 0}
-          className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-30">
-          <Trash2 size={12} className="inline mr-1" /> Limpar
-        </button>
-      </div>
-    </div>
   );
 };
 
