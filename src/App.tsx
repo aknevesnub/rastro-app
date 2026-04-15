@@ -1642,15 +1642,167 @@ const SGaleria = ({ go }: { go: (s: number) => void }) => {
   );
 };
 
+// ─── Tela pública do lote (acessada via QR) ───
+const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) => {
+  const appUrl = window.location.origin + window.location.pathname;
+
+  // Carrega dados direto do localStorage (funciona mesmo sem estar logado)
+  const user: AppUser | null = (() => { try { const u = localStorage.getItem("rastro_user"); return u ? JSON.parse(u) : null; } catch { return null; } })();
+  const lots: Lot[] = (() => { try { const l = localStorage.getItem("rastro_lots"); return l ? JSON.parse(l) : []; } catch { return []; } })();
+  const lot = lots.find(l => l.id === lotId);
+
+  if (!lot || !user) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-8 text-center">
+        <Leaf size={40} className="text-accent mb-6" />
+        <div className="font-black text-2xl uppercase tracking-tighter text-text mb-3">Rastro™</div>
+        <p className="text-xs text-white/50 uppercase tracking-widest mb-8">Lote não encontrado ou sem dados.</p>
+        <Btn onClick={() => { window.history.replaceState({}, "", appUrl); go(0); }}>Ir para o início</Btn>
+      </div>
+    );
+  }
+
+  const totalArea = lots.reduce((a, l) => a + (Number(l.area) || 0), 0);
+  const lotUrl = `${appUrl}?lot=${lot.id}`;
+  const st = LOT_STATUS.find(s => s.key === lot.status);
+
+  const handleShare = async () => {
+    try {
+      if (navigator.share) { await navigator.share({ title: `${lot.name} — ${user.farmName}`, url: lotUrl }); }
+      else { await navigator.clipboard.writeText(lotUrl); alert("Link copiado!"); }
+    } catch { await navigator.clipboard.writeText(lotUrl).catch(() => {}); }
+  };
+
+  return (
+    <div className="min-h-screen bg-bg">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-bg/90 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-3xl mx-auto px-5 h-14 flex items-center justify-between">
+          <div className="font-black text-lg tracking-tighter uppercase text-text">Rastro™</div>
+          <span className="text-[9px] font-bold uppercase tracking-widest text-accent border border-accent/40 px-2 py-1">EUDR ✓</span>
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto px-5 md:px-8 pb-16">
+        {/* Hero */}
+        <div className="py-10 border-b border-white/10 md:grid md:grid-cols-2 md:gap-12 md:items-start">
+          <div>
+            <span className={`inline-block text-[9px] font-bold uppercase tracking-widest border px-2 py-1 mb-4 ${st?.color || "text-white/40 border-white/20"}`}>{st?.label || "Ativo"}</span>
+            <h1 className="font-black text-4xl md:text-5xl uppercase tracking-tighter text-text leading-none mb-2">{lot.name}</h1>
+            <p className="text-accent font-bold text-sm uppercase tracking-widest mb-1">{lot.crop}</p>
+            <p className="text-white/50 text-xs uppercase tracking-widest flex items-center gap-1.5 mt-3">
+              <MapPin size={11} /> {user.farmName} {user.location ? `— ${user.location}` : ""}
+            </p>
+          </div>
+
+          {/* Stats */}
+          <div className="mt-8 md:mt-0 grid grid-cols-3 gap-3">
+            {[
+              { n: lot.area ? `${lot.area} ha` : "—", l: "Área" },
+              { n: LOT_TIPOS[lot.tipo] || "—", l: "Tipo" },
+              { n: lot.date ? new Date(lot.date + "T00:00:00").toLocaleDateString("pt-BR", { month: "short", year: "numeric" }) : "—", l: "Plantio" },
+            ].map((s, i) => (
+              <div key={i} className="border border-white/10 p-4 text-center">
+                <div className="text-sm font-black text-text leading-tight mb-1">{s.n}</div>
+                <div className="text-[9px] text-white/40 font-bold uppercase tracking-widest">{s.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Fazenda info */}
+        <div className="py-8 border-b border-white/10 flex items-center gap-5">
+          <div className="w-14 h-14 border border-white/20 overflow-hidden shrink-0 bg-white/5">
+            {user.logo ? <img src={user.logo} className="w-full h-full object-cover" alt="logo" /> : <div className="w-full h-full flex items-center justify-center"><Sprout size={22} className="text-white/30" /></div>}
+          </div>
+          <div>
+            <div className="text-sm font-black uppercase tracking-tight text-text">{user.farmName}</div>
+            <div className="text-[10px] text-white/50 mt-1">{user.description || "Produtor rural certificado"}</div>
+            <div className="flex gap-2 mt-3 flex-wrap">
+              <span className="text-[8px] font-bold uppercase tracking-widest text-accent border border-accent/40 px-1.5 py-0.5 flex items-center gap-1"><ShieldCheck size={9}/> EUDR</span>
+              {(user.certs || []).map((c, i) => <span key={i} className="text-[8px] font-bold uppercase tracking-widest text-white/50 border border-white/20 px-1.5 py-0.5">{c}</span>)}
+            </div>
+          </div>
+          <div className="ml-auto text-right">
+            <div className="text-lg font-black text-text">{totalArea}</div>
+            <div className="text-[9px] text-white/40 font-bold uppercase tracking-widest">ha total</div>
+          </div>
+        </div>
+
+        {/* EUDR */}
+        <div className="py-8 border-b border-white/10">
+          <div className="flex items-center gap-4 p-5 border border-accent bg-accent/5 mb-4">
+            <ShieldCheck size={28} className="text-accent shrink-0" />
+            <div>
+              <div className="text-sm font-black uppercase tracking-tight text-text mb-1">Conformidade EUDR</div>
+              <div className="text-[10px] text-white/60 leading-relaxed">Sem sobreposição com área desmatada após 31/12/2020. Verificado via PRODES/INPE.</div>
+            </div>
+            <div className="ml-auto shrink-0">
+              <span className="text-[9px] font-black uppercase tracking-widest text-accent">100% ✓</span>
+            </div>
+          </div>
+          {lot.notes && (
+            <div className="p-4 border border-white/10 bg-white/2">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-accent mb-2">Observações do produtor</div>
+              <p className="text-xs text-white/60 leading-relaxed">{lot.notes}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Mapa */}
+        {lot.mapPoints?.length > 2 && (
+          <div className="py-8 border-b border-white/10">
+            <h3 className="text-[11px] font-bold text-accent uppercase tracking-widest mb-4">Área delimitada</h3>
+            <svg viewBox="0 0 100 100" className="w-full h-48 border border-white/10 bg-white/2" preserveAspectRatio="none">
+              <polygon points={lot.mapPoints.map(p => p.join(",")).join(" ")} fill="rgba(224,255,34,0.1)" stroke="#E0FF22" strokeWidth="0.8" />
+              {lot.mapPoints.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="1.5" fill="#E0FF22" />)}
+            </svg>
+          </div>
+        )}
+
+        {/* Fotos */}
+        {lot.photos?.length > 0 && (
+          <div className="py-8 border-b border-white/10">
+            <h3 className="text-[11px] font-bold text-accent uppercase tracking-widest mb-4">Fotos do lote ({lot.photos.length})</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {lot.photos.map((p, i) => (
+                <div key={i} className="aspect-video overflow-hidden border border-white/10">
+                  <img src={p} className="w-full h-full object-cover" alt={`foto ${i + 1}`} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* QR + compartilhar */}
+        <div className="py-8 flex flex-col items-center text-center">
+          <div className="bg-white p-4 mb-6 inline-block">
+            <QRDisplay value={lotUrl} size={160} />
+          </div>
+          <p className="text-[9px] text-white/30 uppercase tracking-widest mb-6 break-all max-w-xs">{lotUrl}</p>
+          <div className="flex gap-3 flex-wrap justify-center">
+            <Btn icon={Share2} onClick={handleShare}>Compartilhar</Btn>
+            <Btn outline icon={Download} onClick={() => downloadQR(lotUrl, lot.name)}>Baixar QR</Btn>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="pt-6 border-t border-white/10 text-center">
+          <p className="text-[9px] text-white/30 uppercase tracking-widest">Rastreabilidade verificada por <span className="text-accent">Rastro™</span></p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SQRCode = ({ go }: { go: (s: number) => void }) => {
   const { lots, user, addToast } = useContext(AppContext);
   const [selectedId, setSelectedId] = useState(lots[lots.length - 1]?.id || "");
   const lot = lots.find(l => l.id === selectedId) || lots[lots.length - 1];
 
-  const qrValue = lot
-    ? `https://rastro.app/f/${encodeURIComponent(user?.farmName || "fazenda")}/l/${encodeURIComponent(lot.name)}`
-    : `https://rastro.app/f/${encodeURIComponent(user?.farmName || "fazenda")}`;
-
+  // URL aponta para o próprio app com ?lot=ID
+  const appBase = window.location.origin + window.location.pathname;
+  const qrValue = lot ? `${appBase}?lot=${lot.id}` : appBase;
   const shareTitle = lot ? `${lot.name} — ${user?.farmName}` : user?.farmName || "Fazenda";
 
   if (lots.length === 0) return (
@@ -1682,15 +1834,25 @@ const SQRCode = ({ go }: { go: (s: number) => void }) => {
           </div>
         )}
 
-        <div className="bg-white p-5 mb-8 border border-white/20" style={{ width: 240, height: 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="bg-white p-5 mb-6 border border-white/20" style={{ width: 240, height: 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <QRDisplay value={qrValue} size={220} />
         </div>
 
-        <h2 className="font-black text-2xl uppercase tracking-tighter text-text leading-tight mb-2">{lot?.name || "Fazenda"}</h2>
+        <h2 className="font-black text-2xl uppercase tracking-tighter text-text leading-tight mb-1">{lot?.name || "Fazenda"}</h2>
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-2">{lot?.crop} · {lot?.area ? `${lot.area} ha` : ""}</p>
-        <p className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-10 break-all max-w-xs">{qrValue}</p>
+        <p className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-2 break-all max-w-xs">{qrValue}</p>
 
-        <div className="w-full space-y-4">
+        {/* Preview do que o stakeholder vê */}
+        <div className="w-full my-6 p-4 border border-white/10 bg-white/2 text-left">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-accent mb-2">Ao escanear, o comprador verá:</p>
+          <div className="space-y-1">
+            {[`📋 Lote: ${lot?.name}`, `🌱 Cultura: ${lot?.crop}`, `📐 Área: ${lot?.area || "—"} ha`, `✅ EUDR: 100% Conforme`, lot?.photos?.length ? `📷 ${lot.photos.length} foto(s)` : null].filter(Boolean).map((item, i) => (
+              <p key={i} className="text-[10px] text-white/60">{item}</p>
+            ))}
+          </div>
+        </div>
+
+        <div className="w-full space-y-3">
           <Btn full icon={Share2} onClick={() => doShare(qrValue, shareTitle, addToast)}>Compartilhar link</Btn>
           <Btn full outline icon={Download} onClick={() => downloadQR(qrValue, lot?.name || "fazenda")}>Baixar QR Code</Btn>
         </div>
@@ -1769,9 +1931,16 @@ const SDocs = ({ go }: { go: (s: number) => void }) => {
 // ─────────────────────────────────────────────
 
 const AppContent = () => {
-  const [s, setS] = useState(0);
+  // Detect ?lot=ID in URL for QR deep-link
+  const [lotParam] = useState<string | null>(() => {
+    const p = new URLSearchParams(window.location.search).get("lot");
+    if (p) window.history.replaceState({}, "", window.location.pathname); // clean URL
+    return p;
+  });
+
+  const [s, setS] = useState(() => lotParam ? 13 : 0);
   const { user, logout } = useContext(AppContext);
-  const showNav = s >= 3;
+  const showNav = s >= 3 && s !== 13;
 
   useEffect(() => {
     document.body.style.backgroundColor = "#0A0A0A";
@@ -1798,6 +1967,7 @@ const AppContent = () => {
       case 10: return <SQRCode go={setS} key="10" />;
       case 11: return <SDocs go={setS} key="11" />;
       case 12: return <SEditLote go={setS} key="12" />;
+      case 13: return <SLotPublico lotId={lotParam!} go={setS} key="13" />;
       default: return <SLanding go={setS} key="0" />;
     }
   };
@@ -1815,7 +1985,7 @@ const AppContent = () => {
           </main>
         </div>
       ) : (
-        /* ── Layout público: landing / auth ── */
+        /* ── Layout público: landing / auth / lot público ── */
         <AnimatePresence mode="wait">{renderScreen()}</AnimatePresence>
       )}
     </div>
