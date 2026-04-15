@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0A0A0A;
+  --color-text: #F5F5F5;
+  --color-accent: #E0FF22;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+/* ── Base ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* NÃO usar overflow-x:hidden aqui — bloqueia scroll vertical no body */
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* overflow-x controlado pelo wrapper #root, não pelo body */
+}
+
+#root {
+  overflow-x: clip; /* clip não cria scroll container, não bloqueia scroll vertical */
+}
+
+/* ── Typography ── */
+.text-stroke {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--color-text);
+}
+.text-stroke-accent {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--color-accent);
+}
+
+/* ── Utilities ── */
+.bg-white\/2  { background-color: rgba(255,255,255,0.02); }
+.bg-white\/3  { background-color: rgba(255,255,255,0.03); }
+
+.hover\:bg-white\/3:hover { background-color: rgba(255,255,255,0.03); }
+.hover\:bg-white\/5:hover { background-color: rgba(255,255,255,0.05); }
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Safe area (iPhone notch/home bar) ── */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(224,255,34,0.4); }
+
+/* ── Responsive breakpoints reference ──
+   Mobile   : < 768px   (bottom nav, single column, px-5)
+   Tablet   : 768-1023  (sidebar icons 64px, 2-col grids, px-8)
+   Desktop  : ≥ 1024px  (sidebar full 224px, 3-4 col grids, max-w-5xl)
+*/

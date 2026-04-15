@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)\")",
+      "Bash(find \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src\" -type f)",
+      "Bash(find '/Users/andreknoppdasneves/Downloads/zip \\(1\\)' -type f -o -type d)",
+      "Bash(wc -l \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(find \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)\" -type f -name \"*.json\" -o -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\")",
+      "Bash(npm install:*)",
+      "Bash(export PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin\")",
+      "Bash(/opt/homebrew/bin/node --version)",
+      "Bash(sed -i '' 's/className=\"\"p-6\"\"/className=\"\"p-6 md:p-10\"\"/g' \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(sed -i '' 's/className=\"\"p-6 pt-16\"\"/className=\"\"p-6 pt-16 md:p-12 md:pt-20\"\"/g' \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(sed -i '' 's/className=\"\"px-5 pt-6\"\"/className=\"\"px-5 md:px-10 pt-6\"\"/g' \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(sed -i '' 's/className=\"\"p-5\"\"$/className=\"\"p-5 md:p-8 max-w-5xl mx-auto\"\"/g' \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(sed -i '' 's/className=\"\"px-5 md:px-10 pt-6\"\"/className=\"\"px-5 md:px-8 pt-6 max-w-5xl mx-auto\"\"/g' \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(sed -i '' 's/className=\"\"pt-16 px-6 pb-8 border-b border-white\\\\/10 mb-6\"\"/className=\"\"pt-16 px-6 md:px-10 pb-8 border-b border-white\\\\/10 mb-6 max-w-5xl mx-auto\"\"/g' \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(sed -i '' 's/className=\"\"px-5 mb-8\"\"/className=\"\"px-5 md:px-8 mb-8 max-w-5xl mx-auto\"\"/g' \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)/src/App.tsx\")",
+      "Bash(find \"/Users/andreknoppdasneves/Downloads/zip \\(1\\)\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" -o -name \"*.css\" -o -name \"*.html\" -o -name \"*.json\" \\\\\\))"
+    ]
+  }
+}
