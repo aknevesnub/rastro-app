@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import QRCode from "qrcode";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   ChevronLeft, Home, Map as MapIcon, FileText, User,
   Camera, Bell, Plus, Image as ImageIcon, QrCode,
@@ -378,7 +380,7 @@ const doShare = async (url: string, title: string, addToast: (m: string) => void
   try {
     if (navigator.share) { await navigator.share({ title, url }); }
     else { await navigator.clipboard.writeText(url); addToast("Link copiado!"); }
-  } catch { try { await navigator.clipboard.writeText(url); addToast("Link copiado!"); } catch { addToast("Não foi possível compartilhar", "error"); } }
+  } catch { try { await navigator.clipboard.writeText(url); addToast("Link copiado!"); } catch { addToast("Não foi possível compartilhar"); } }
 };
 
 const openEUDR = (user: AppUser, lots: Lot[]) => {
@@ -606,26 +608,44 @@ const ImgUploader = ({ value, onChange, className, children }: { value?: string;
 };
 
 // SVG map polygon drawer
-const MapDrawer = ({ points, onChange }: { points: [number, number][]; onChange: (p: [number, number][]) => void }) => {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = svgRef.current!.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    onChange([...points, [x, y]]);
-  };
+// MapDrawerBtn — botão no formulário que abre o editor de mapa em tela cheia
+const MapDrawerBtn = ({ points, onChange, name }: {
+  points: [number, number][];
+  onChange: (p: [number, number][]) => void;
+  name: string;
+}) => {
+  const [open, setOpen] = useState(false);
+  const hasPoly = points.length > 2;
+  const area = hasPoly ? calcAreaHa(points) : 0;
   return (
-    <div>
-      <svg ref={svgRef} onClick={handleClick} viewBox="0 0 100 100" className="w-full h-48 border border-white/20 bg-white/5 cursor-crosshair" preserveAspectRatio="none">
-        {points.length > 2 && <polygon points={points.map(p => p.join(",")).join(" ")} fill="rgba(224,255,34,0.12)" stroke="#E0FF22" strokeWidth="0.8" />}
-        {points.map((p, i) => i < points.length - 1 && <line key={i} x1={p[0]} y1={p[1]} x2={points[i + 1][0]} y2={points[i + 1][1]} stroke="#E0FF22" strokeWidth="0.6" />)}
-        {points.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="1.5" fill="#E0FF22" />)}
-      </svg>
-      <div className="flex justify-between items-center mt-2">
-        <span className="text-[9px] text-white/40 uppercase tracking-widest">{points.length > 0 ? `${points.length} pontos` : "Toque para marcar os limites da área"}</span>
-        {points.length > 0 && <button onClick={() => onChange([])} className="text-[9px] font-bold uppercase tracking-widest text-accent">Limpar</button>}
+    <>
+      {open && (
+        <MapDrawer
+          name={name || "Lote"}
+          initialPoints={points}
+          onSave={(pts) => { onChange(pts); setOpen(false); }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+      <div className="border border-white/15 p-4 flex items-center justify-between gap-4 cursor-pointer hover:border-accent transition-colors" onClick={() => setOpen(true)}>
+        <div>
+          {hasPoly ? (
+            <>
+              <div className="text-xs font-bold text-accent uppercase tracking-wide mb-0.5">{points.length} pontos marcados</div>
+              <div className="text-[10px] text-white/50">{area.toFixed(2)} ha calculados · Clique para editar</div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs font-bold text-text uppercase tracking-wide mb-0.5">Nenhuma área marcada</div>
+              <div className="text-[10px] text-white/40">Clique para abrir o mapa e delimitar a área</div>
+            </>
+          )}
+        </div>
+        <div className={`shrink-0 flex items-center justify-center w-10 h-10 border ${hasPoly ? "border-accent text-accent" : "border-white/20 text-white/30"}`}>
+          <MapPin size={18} />
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
@@ -1348,9 +1368,9 @@ const LotForm = ({ initial, onSave, onBack, onDelete }: {
         </div>
       </div>
 
-      <div className="mb-8">
-        <label className="block text-[10px] font-bold uppercase tracking-widest text-accent mb-4">Marcar área no mapa</label>
-        <MapDrawer points={mapPoints} onChange={setMapPoints} />
+      <div className="mb-8 md:col-span-2">
+        <label className="block text-[10px] font-bold uppercase tracking-widest text-accent mb-4">Área no mapa (satélite)</label>
+        <MapDrawerBtn points={mapPoints} onChange={setMapPoints} name={form.name} />
       </div>
 
       <div className="mb-10">
@@ -1514,39 +1534,244 @@ const SProducao = ({ go }: { go: (s: number) => void }) => {
   );
 };
 
+// ─── Calcula área do polígono em hectares (Shoelace + fator de conversão) ───
+const calcAreaHa = (pts: [number, number][]): number => {
+  if (pts.length < 3) return 0;
+  const R = 6371000; // raio médio da Terra em metros
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  let area = 0;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const xi = toRad(pts[i][1]) * Math.cos(toRad((pts[i][0] + pts[j][0]) / 2));
+    const xj = toRad(pts[j][1]) * Math.cos(toRad((pts[i][0] + pts[j][0]) / 2));
+    area += xi * toRad(pts[j][0]) - xj * toRad(pts[i][0]);
+  }
+  return Math.abs((area * R * R) / 2) / 10000; // m² → ha
+};
+
+// ─── Componente de mapa reutilizável (somente visualização) ───
+const LeafletMap = ({
+  points,
+  height = 300,
+  zoom = 14,
+}: {
+  points: [number, number][];
+  height?: number;
+  zoom?: number;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const center: [number, number] = points.length > 0
+      ? [points.reduce((s, p) => s + p[0], 0) / points.length, points.reduce((s, p) => s + p[1], 0) / points.length]
+      : [-15.77972, -47.92972];
+
+    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false }).setView(center, zoom);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19,
+    }).addTo(map);
+    if (points.length > 2) {
+      L.polygon(points, { color: "#E0FF22", weight: 2, fillOpacity: 0.15 }).addTo(map);
+      points.forEach(p => L.circleMarker(p, { radius: 5, color: "#E0FF22", fillColor: "#E0FF22", fillOpacity: 1, weight: 0 }).addTo(map));
+    }
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+
+  return <div ref={containerRef} style={{ height, width: "100%" }} />;
+};
+
+// ─── Editor de área (tela cheia, clique para adicionar pontos) ───
+const MapDrawer = ({
+  name,
+  initialPoints,
+  onSave,
+  onClose,
+}: {
+  name: string;
+  initialPoints: [number, number][];
+  onSave: (pts: [number, number][]) => void;
+  onClose: () => void;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const polygonRef = useRef<L.Polygon | null>(null);
+  const markersRef = useRef<L.CircleMarker[]>([]);
+  const [points, setPoints] = useState<[number, number][]>(initialPoints?.length > 0 ? initialPoints : []);
+  const [area, setArea] = useState(calcAreaHa(initialPoints || []));
+  const [locating, setLocating] = useState(false);
+
+  const redraw = (pts: [number, number][]) => {
+    const map = mapRef.current; if (!map) return;
+    markersRef.current.forEach(m => m.remove()); markersRef.current = [];
+    if (polygonRef.current) { polygonRef.current.remove(); polygonRef.current = null; }
+    pts.forEach(p => {
+      const m = L.circleMarker(p, { radius: 6, color: "#E0FF22", fillColor: "#E0FF22", fillOpacity: 1, weight: 0 }).addTo(map);
+      markersRef.current.push(m);
+    });
+    if (pts.length > 2) {
+      polygonRef.current = L.polygon(pts, { color: "#E0FF22", weight: 2, fillOpacity: 0.15 }).addTo(map);
+    }
+    setArea(calcAreaHa(pts));
+  };
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const initCenter: [number, number] = points.length > 0
+      ? [points.reduce((s, p) => s + p[0], 0) / points.length, points.reduce((s, p) => s + p[1], 0) / points.length]
+      : [-15.77972, -47.92972];
+
+    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false }).setView(initCenter, points.length > 0 ? 14 : 5);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
+    map.on("click", (e: L.LeafletMouseEvent) => {
+      setPoints(prev => {
+        const next: [number, number][] = [...prev, [e.latlng.lat, e.latlng.lng]];
+        redraw(next);
+        return next;
+      });
+    });
+    mapRef.current = map;
+    if (points.length > 0) redraw(points);
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+
+  const handleUndo = () => setPoints(prev => { const next = prev.slice(0, -1); redraw(next); return next; });
+  const handleClear = () => setPoints(() => { redraw([]); return []; });
+  const handleLocate = () => {
+    setLocating(true);
+    mapRef.current?.locate({ setView: true, maxZoom: 14 });
+    mapRef.current?.once("locationfound", () => setLocating(false));
+    mapRef.current?.once("locationerror", () => setLocating(false));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-bg flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 h-14 border-b border-white/10 bg-bg z-10 shrink-0">
+        <button onClick={onClose} className="flex items-center gap-2 text-white/60 hover:text-text">
+          <X size={18} /> <span className="text-[10px] font-bold uppercase tracking-widest">Cancelar</span>
+        </button>
+        <div className="text-center">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-text">{name}</div>
+          {area > 0 && <div className="text-[9px] text-accent font-bold">{area.toFixed(2)} ha calculados</div>}
+        </div>
+        <button onClick={() => { onSave(points); onClose(); }}
+          className="flex items-center gap-2 text-accent text-[10px] font-bold uppercase tracking-widest">
+          <Check size={16} /> Salvar
+        </button>
+      </div>
+
+      {/* Instrução */}
+      <div className="bg-accent/10 border-b border-accent/20 px-4 py-2 text-center shrink-0">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-accent">
+          Toque no mapa para marcar os vértices da área
+        </p>
+      </div>
+
+      {/* Mapa */}
+      <div ref={containerRef} className="flex-1" />
+
+      {/* Controles */}
+      <div className="flex gap-2 px-4 py-3 border-t border-white/10 bg-bg shrink-0">
+        <button onClick={handleLocate} className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5">
+          {locating ? "..." : <><MapPin size={12} /> Minha localização</>}
+        </button>
+        <button onClick={handleUndo} disabled={points.length === 0}
+          className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-accent hover:text-accent transition-colors disabled:opacity-30">
+          ↩ Desfazer
+        </button>
+        <button onClick={handleClear} disabled={points.length === 0}
+          className="flex-1 py-2.5 border border-white/20 text-[9px] font-bold uppercase tracking-widest text-white/60 hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-30">
+          <Trash2 size={12} className="inline mr-1" /> Limpar
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Screen 8 — Mapa real com Leaflet + Esri Satellite
 const SMapa = ({ go }: { go: (s: number) => void }) => {
-  const { lots, setCurrentLotId } = useContext(AppContext);
+  const { lots, updateLot, setCurrentLotId, addToast } = useContext(AppContext);
+  const [editingLot, setEditingLot] = useState<Lot | null>(null);
   const totalArea = lots.reduce((a, l) => a + (Number(l.area) || 0), 0);
+  const mappedCount = lots.filter(l => l.mapPoints?.length > 2).length;
+
+  // Mapa geral com todos os lotes
+  const allPoints = lots.flatMap(l => l.mapPoints || []);
+  const overviewCenter: [number, number] = allPoints.length > 0
+    ? [allPoints.reduce((s, p) => s + p[0], 0) / allPoints.length, allPoints.reduce((s, p) => s + p[1], 0) / allPoints.length]
+    : [-15.77972, -47.92972];
+
+  const overviewRef = useRef<HTMLDivElement>(null);
+  const overviewMapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    if (!overviewRef.current || overviewMapRef.current) return;
+    const map = L.map(overviewRef.current, { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false })
+      .setView(overviewCenter, allPoints.length > 0 ? 12 : 4);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
+    lots.forEach(l => {
+      if (l.mapPoints?.length > 2) {
+        L.polygon(l.mapPoints, { color: "#E0FF22", weight: 2, fillOpacity: 0.2 }).addTo(map)
+          .bindTooltip(l.name, { permanent: false, className: "leaflet-tooltip-rastro" });
+      }
+    });
+    overviewMapRef.current = map;
+    return () => { map.remove(); overviewMapRef.current = null; };
+  }, [lots]);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-24 md:pb-0">
+      {editingLot && (
+        <MapDrawer
+          name={editingLot.name}
+          initialPoints={editingLot.mapPoints || []}
+          onSave={(pts) => {
+            updateLot(editingLot.id, { mapPoints: pts });
+            addToast(`Área de ${editingLot.name} salva! (${calcAreaHa(pts).toFixed(2)} ha)`);
+          }}
+          onClose={() => setEditingLot(null)}
+        />
+      )}
+
       <TopBar title="Mapa da propriedade" onBack={() => go(3)} />
-      <div className="relative h-72 bg-bg overflow-hidden border-b border-white/10">
-        <div className="w-full h-full bg-white/3" />
-        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
-          <polygon points="15,20 85,10 92,82 8,70" fill="rgba(224,255,34,0.07)" stroke="#E0FF22" strokeWidth="0.5" />
-          {lots.map((l, i) => l.mapPoints?.length > 2 && (
-            <polygon key={i} points={l.mapPoints.map(p => p.join(",")).join(" ")} fill="rgba(255,255,255,0.05)" stroke="#F5F5F5" strokeWidth="0.5" />
-          ))}
-        </svg>
-        <div className="absolute bottom-4 left-4 right-4 bg-bg/80 backdrop-blur-sm border border-white/10 p-3 flex justify-between items-center">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-accent">Área total mapeada</div>
-            <div className="text-lg font-black text-text">{totalArea} ha</div>
+
+      {/* Mapa satélite geral */}
+      <div className="relative border-b border-white/10" style={{ height: 280 }}>
+        <div ref={overviewRef} style={{ height: "100%", width: "100%" }} />
+        {allPoints.length === 0 && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+            <MapPin size={28} className="text-accent mb-2" />
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Nenhuma área mapeada ainda</p>
+            <p className="text-[9px] text-white/30 mt-1">Clique em "Mapear" em um lote abaixo</p>
           </div>
-          <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">{lots.length} lote(s)</div>
+        )}
+        <div className="absolute bottom-3 left-3 right-3 bg-bg/85 backdrop-blur-sm border border-white/10 p-3 flex justify-between items-center pointer-events-none">
+          <div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-accent">Área total declarada</div>
+            <div className="text-base font-black text-text">{totalArea} ha</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">{mappedCount}/{lots.length} lotes mapeados</div>
+            <div className="text-[8px] text-white/25 mt-0.5">Esri World Imagery</div>
+          </div>
         </div>
       </div>
 
-      <div className="p-5">
+      <div className="p-5 max-w-5xl mx-auto">
+        {/* Badge EUDR */}
         <div className="flex items-center gap-4 mb-6 p-4 border border-accent bg-accent/5">
-          <ShieldCheck size={24} className="text-accent" />
+          <ShieldCheck size={22} className="text-accent shrink-0" />
           <div>
-            <div className="text-xs font-bold uppercase tracking-wide text-text mb-1">Sem sobreposição</div>
-            <div className="text-[9px] font-bold uppercase tracking-widest text-accent">Verificado via PRODES/INPE</div>
+            <div className="text-xs font-bold uppercase tracking-wide text-text mb-0.5">Sem sobreposição com desmatamento</div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-accent">Verificado via PRODES/INPE · Conformidade EUDR</div>
           </div>
         </div>
 
+        {/* Lista de lotes */}
         <h4 className="text-[11px] font-bold text-accent uppercase tracking-widest mb-4">Lotes</h4>
         {lots.length === 0 && (
           <div className="flex flex-col items-center py-10 text-center">
@@ -1556,15 +1781,44 @@ const SMapa = ({ go }: { go: (s: number) => void }) => {
           </div>
         )}
         <div className="space-y-3">
-          {lots.map((l, i) => (
-            <div key={i} onClick={() => { setCurrentLotId(l.id); go(12); }} className="flex justify-between items-center p-4 border border-white/10 cursor-pointer hover:border-accent transition-colors">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-text mb-1">{l.name} — {l.crop}</div>
-                <div className="text-[10px] text-white/60">{l.area ? `${l.area} ha` : "Área não definida"} · {LOT_TIPOS[l.tipo]}</div>
+          {lots.map((l) => {
+            const hasPoly = l.mapPoints?.length > 2;
+            const lotArea = hasPoly ? calcAreaHa(l.mapPoints).toFixed(2) : null;
+            return (
+              <div key={l.id} className="border border-white/10 p-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-black uppercase tracking-tight text-text mb-0.5 truncate">{l.name} — {l.crop}</div>
+                    <div className="text-[10px] text-white/50">
+                      {l.area ? `${l.area} ha declarados` : "Área não declarada"} · {LOT_TIPOS[l.tipo]}
+                      {lotArea && <span className="text-accent ml-2">· {lotArea} ha mapeados</span>}
+                    </div>
+                  </div>
+                  <span className={`text-[8px] font-bold uppercase tracking-widest border px-2 py-1 shrink-0 ${hasPoly ? "text-accent border-accent/40" : "text-white/30 border-white/15"}`}>
+                    {hasPoly ? "Mapeado" : "Sem mapa"}
+                  </span>
+                </div>
+
+                {/* Mini mapa do lote se tiver pontos */}
+                {hasPoly && (
+                  <div className="mb-3 border border-white/10 overflow-hidden" style={{ height: 140 }}>
+                    <LeafletMap points={l.mapPoints} height={140} />
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button onClick={() => setEditingLot(l)}
+                    className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-accent hover:text-text transition-colors">
+                    <MapPin size={12} /> {hasPoly ? "Editar área" : "Mapear área"}
+                  </button>
+                  <button onClick={() => { setCurrentLotId(l.id); go(12); }}
+                    className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-white/40 hover:text-text transition-colors">
+                    <Edit2 size={12} /> Editar lote
+                  </button>
+                </div>
               </div>
-              <ChevronRight size={16} className="text-white/40" />
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       <BottomNav active={8} onNav={go} />
@@ -1749,14 +2003,16 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
           )}
         </div>
 
-        {/* Mapa */}
+        {/* Mapa satélite real */}
         {lot.mapPoints?.length > 2 && (
           <div className="py-8 border-b border-white/10">
-            <h3 className="text-[11px] font-bold text-accent uppercase tracking-widest mb-4">Área delimitada</h3>
-            <svg viewBox="0 0 100 100" className="w-full h-48 border border-white/10 bg-white/2" preserveAspectRatio="none">
-              <polygon points={lot.mapPoints.map(p => p.join(",")).join(" ")} fill="rgba(224,255,34,0.1)" stroke="#E0FF22" strokeWidth="0.8" />
-              {lot.mapPoints.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="1.5" fill="#E0FF22" />)}
-            </svg>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[11px] font-bold text-accent uppercase tracking-widest">Área delimitada</h3>
+              <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest">{calcAreaHa(lot.mapPoints).toFixed(2)} ha · {lot.mapPoints.length} vértices</span>
+            </div>
+            <div className="border border-white/10 overflow-hidden" style={{ height: 280 }}>
+              <LeafletMap points={lot.mapPoints} height={280} />
+            </div>
           </div>
         )}
 
