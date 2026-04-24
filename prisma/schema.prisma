@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  password       String
+  farmName       String
+  name           String?
+  phone          String?
+  location       String?
+  area           Float?
+  description    String?
+  logoUrl        String?
+  coverUrl       String?
+  logoTransform  Json?
+  coverTransform Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  lots     Lot[]
+  products UserProduct[]
+  certs    UserCert[]
+  events   Event[]
+}
+
+model UserProduct {
+  id     String @id @default(uuid())
+  userId String
+  name   String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserCert {
+  id     String @id @default(uuid())
+  userId String
+  name   String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Lot {
+  id            String    @id @default(uuid())
+  userId        String
+  name          String
+  crop          String
+  area          Float?
+  harvestDate   DateTime?
+  expiryDate    DateTime?
+  status        String    @default("active")
+  eudrCompliant Boolean   @default(false)
+  notes         String?
+  geoPolygon    Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photos LotPhoto[]
+  events Event[]
+}
+
+model LotPhoto {
+  id        String   @id @default(uuid())
+  lotId     String
+  url       String
+  transform Json?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  lot Lot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+}
+
+model Event {
+  id        String   @id @default(uuid())
+  userId    String
+  lotId     String?
+  type      String
+  message   String?
+  createdAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lot  Lot?  @relation(fields: [lotId], references: [id], onDelete: SetNull)
+}
