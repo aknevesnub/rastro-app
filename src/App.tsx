@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
 import { paymentService } from "./services/payment";
 import type { PlanTier } from "./services/payment";
+import * as api from "./services/api";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import QRCode from "qrcode";
@@ -235,6 +236,7 @@ const useLang = () => {
 
 interface Lot {
   id: string;
+  apiId?: string;      // UUID do Supabase (preenchido depois do sync)
   name: string;
   crop: string;
   area: string;
@@ -374,25 +376,44 @@ const usePlan = () => {
 // Security utilities
 // ─────────────────────────────────────────────
 
-// Hash de senha com PBKDF2 + salt (SubtleCrypto nativo — mais seguro que SHA-256 simples)
-const PBKDF2_SALT_KEY = "rastro_salt";
-const getSalt = (): Uint8Array => {
-  const stored = localStorage.getItem(PBKDF2_SALT_KEY);
-  if (stored) return new Uint8Array(JSON.parse(stored));
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  localStorage.setItem(PBKDF2_SALT_KEY, JSON.stringify(Array.from(salt)));
-  return salt;
-};
+// Hash de senha com PBKDF2 + salt por usuário (SubtleCrypto nativo)
+// Formato armazenado: "pbkdf2:<16-byte salt hex>:<32-byte hash hex>"
+// Cada usuário tem seu próprio salt — protege contra ataques de rainbow table
+// mesmo que dois usuários compartilhem o mesmo dispositivo.
 const hashPassword = async (plain: string): Promise<string> => {
-  const salt = getSalt();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, "0")).join("");
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(plain), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256);
-  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, "0")).join("");
+  const hashHex = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return `pbkdf2:${saltHex}:${hashHex}`;
 };
-// SHA-256 simples — apenas para migrar senhas legadas em plaintext
-const sha256 = async (plain: string): Promise<string> => {
+
+// Verificar senha — suporta novo formato e formatos legados para migração
+const verifyPassword = async (plain: string, stored: string): Promise<boolean> => {
+  // Novo formato: "pbkdf2:<saltHex>:<hashHex>"
+  if (stored.startsWith("pbkdf2:")) {
+    const parts = stored.split(":");
+    if (parts.length !== 3) return false;
+    const salt = new Uint8Array(parts[1].match(/.{2}/g)!.map(h => parseInt(h, 16)));
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(plain), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256);
+    const hash = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, "0")).join("");
+    return hash === parts[2];
+  }
+  // Legado: PBKDF2 com salt global do dispositivo (rastro_salt)
+  const storedSalt = localStorage.getItem("rastro_salt");
+  if (storedSalt) {
+    const salt = new Uint8Array(JSON.parse(storedSalt));
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(plain), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256);
+    const hash = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, "0")).join("");
+    if (hash === stored) return true;
+  }
+  // Legado: SHA-256 sem salt (muito antigo)
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(plain));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  const sha256Hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return sha256Hash === stored;
 };
 
 // Rate limiter em memória para login (5 tentativas → bloqueio 60s)
@@ -476,6 +497,29 @@ interface AppCtx {
 
 const AppContext = createContext<AppCtx>({} as AppCtx);
 
+// Detecta se o backend está disponível (VITE_API_URL definido)
+const API_ENABLED = !!import.meta.env.VITE_API_URL;
+
+// Mapeia ApiUser (formato do backend) → AppUser (formato local)
+// Mantém campos de governança/EUDR locais (não estão no schema do Supabase ainda).
+const mergeApiUserIntoLocal = (apiUser: api.ApiUser, local: AppUser | null): AppUser => ({
+  ...(local ?? { history: "", password: "", products: [], certs: [], description: "", farmName: "", name: "", email: "", phone: "" }),
+  farmName: apiUser.farmName,
+  name: apiUser.name ?? "",
+  email: apiUser.email,
+  phone: apiUser.phone ?? "",
+  location: apiUser.location ?? local?.location,
+  description: apiUser.description ?? local?.description ?? "",
+  history: apiUser.description ?? local?.history ?? "",
+  logo: apiUser.logoUrl ?? local?.logo,
+  cover: apiUser.coverUrl ?? local?.cover,
+  logoTransform: apiUser.logoTransform ?? local?.logoTransform,
+  coverTransform: apiUser.coverTransform ?? local?.coverTransform,
+  products: (apiUser.products ?? []).map(p => p.name).length > 0 ? (apiUser.products ?? []).map(p => p.name) : (local?.products ?? []),
+  certs: (apiUser.certs ?? []).map(c => c.name).length > 0 ? (apiUser.certs ?? []).map(c => c.name) : (local?.certs ?? []),
+  password: local?.password ?? "", // senha fica no servidor; localmente vazio
+});
+
 const store = (key: string, data: unknown): boolean => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
@@ -511,9 +555,73 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
       if (e) setEvents(JSON.parse(e));
       if (p) setProposals(JSON.parse(p));
     } catch { /* ignore */ }
+
+    // Se o backend está disponível e há token salvo, busca user + lotes atualizados
+    if (API_ENABLED && api.token.get()) {
+      api.farms.me()
+        .then(apiUser => {
+          setUser(prev => {
+            const merged = mergeApiUserIntoLocal(apiUser, prev);
+            store("rastro_user", merged);
+            return merged;
+          });
+        })
+        .catch(() => {
+          // Token inválido/expirado — limpa
+          api.token.clear();
+        });
+
+      // Hidrata lotes do banco (faz merge com locais por apiId)
+      api.lots.list()
+        .then(apiLots => {
+          setLots(prev => {
+            // Lotes do banco preferem; mescla com locais que ainda n\u00e3o sincronizaram
+            const fromApi: Lot[] = apiLots.map(a => ({
+              id: a.id, // usa o UUID do banco
+              apiId: a.id,
+              name: a.name,
+              crop: a.crop,
+              area: a.area?.toString() ?? "",
+              date: a.createdAt ?? "",
+              colheita: a.harvestDate ?? undefined,
+              tipo: 0,
+              status: (a.status as Lot["status"]) ?? "ativo",
+              notes: a.notes ?? "",
+              photos: (a.photos ?? []).map(p => p.url),
+              photoTransforms: (a.photos ?? []).map(p => p.transform as LogoTransform).filter(Boolean),
+              mapPoints: (a.geoPolygon as { lat: number; lng: number }[] | undefined)?.map(g => [g.lat, g.lng] as [number, number]) ?? [],
+            }));
+            const localOnly = prev.filter(l => !l.apiId);
+            const combined = [...fromApi, ...localOnly];
+            store("rastro_lots", combined);
+            return combined;
+          });
+        })
+        .catch(() => { /* silencioso \u2014 mant\u00e9m localStorage */ });
+    }
   }, []);
 
-  const saveUser = (d: AppUser): boolean => { setUser(d); return store("rastro_user", d); };
+  const saveUser = (d: AppUser): boolean => {
+    setUser(d);
+    const ok = store("rastro_user", d);
+    // Background sync ao Supabase (campos b\u00e1sicos)
+    if (API_ENABLED && api.token.get()) {
+      api.farms.update({
+        farmName: d.farmName,
+        name: d.name,
+        phone: d.phone,
+        location: d.location,
+        description: d.description || d.history,
+        logoUrl: d.logo,
+        coverUrl: d.cover,
+        logoTransform: d.logoTransform,
+        coverTransform: d.coverTransform,
+        products: d.products,
+        certs: d.certs,
+      }).catch(() => { /* silencioso \u2014 localStorage j\u00e1 salvou */ });
+    }
+    return ok;
+  };
 
   const addLot = (lot: Omit<Lot, "id">): string => {
     const id = Date.now().toString();
@@ -521,6 +629,25 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
     setLots(newLots); store("rastro_lots", newLots);
     const ev: AppEvent = { id: Date.now().toString(), title: `Novo lote: ${lot.name}`, date: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }), type: "lote" };
     const ne = [ev, ...events]; setEvents(ne); store("rastro_events", ne);
+
+    // Background sync ao Supabase
+    if (API_ENABLED && api.token.get()) {
+      api.lots.create({
+        name: lot.name,
+        crop: lot.crop,
+        area: lot.area ? parseFloat(lot.area) : undefined,
+        status: lot.status,
+        notes: lot.notes,
+        geoPolygon: lot.mapPoints?.length ? lot.mapPoints.map(([lat, lng]) => ({ lat, lng })) : undefined,
+      }).then(apiLot => {
+        // Salva o apiId no lote local
+        setLots(prev => {
+          const updated = prev.map(l => l.id === id ? { ...l, apiId: apiLot.id } : l);
+          store("rastro_lots", updated);
+          return updated;
+        });
+      }).catch(() => { /* silencioso */ });
+    }
     return id;
   };
 
@@ -530,6 +657,18 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
     const lot = newLots.find(l => l.id === id);
     const ev: AppEvent = { id: Date.now().toString(), title: `Atualizado: ${lot?.name}`, date: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }), type: "update" };
     const ne = [ev, ...events]; setEvents(ne); store("rastro_events", ne);
+
+    // Background sync ao Supabase (se j\u00e1 tem apiId)
+    if (API_ENABLED && api.token.get() && lot?.apiId) {
+      api.lots.update(lot.apiId, {
+        name: lot.name,
+        crop: lot.crop,
+        area: lot.area ? parseFloat(lot.area) : undefined,
+        status: lot.status,
+        notes: lot.notes,
+        geoPolygon: lot.mapPoints?.length ? lot.mapPoints.map(([lat, lng]) => ({ lat, lng })) : undefined,
+      }).catch(() => { /* silencioso */ });
+    }
   };
 
   const deleteLot = (id: string) => {
@@ -539,6 +678,10 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
     if (lot) {
       const ev: AppEvent = { id: Date.now().toString(), title: `Lote removido: ${lot.name}`, date: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }), type: "update" };
       const ne = [ev, ...events]; setEvents(ne); store("rastro_events", ne);
+      // Background sync ao Supabase
+      if (API_ENABLED && api.token.get() && lot.apiId) {
+        api.lots.remove(lot.apiId).catch(() => { /* silencioso */ });
+      }
     }
   };
 
@@ -551,6 +694,33 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
     setLots(newLots); store("rastro_lots", newLots);
     const ev: AppEvent = { id: Date.now().toString(), title: `Foto: ${lot.name}`, date: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }), type: "foto" };
     const ne = [ev, ...events]; setEvents(ne); store("rastro_events", ne);
+
+    // Background upload pro backend (que persiste no /uploads ou Supabase Storage)
+    if (API_ENABLED && api.token.get()) {
+      // Converte data URL em File pra fazer upload
+      try {
+        const [meta, b64] = photo.split(",");
+        const mime = meta.match(/data:(.+);base64/)?.[1] ?? "image/jpeg";
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const file = new File([bytes], `photo-${Date.now()}.jpg`, { type: mime });
+        api.photos.upload(file).then(url => {
+          // Substitui o data URL pela URL do servidor (mais leve no localStorage)
+          setLots(prev => {
+            const updated = prev.map(l => {
+              if (l.id !== lotId) return l;
+              const newPhotos = [...(l.photos || [])];
+              const idx = newPhotos.lastIndexOf(photo);
+              if (idx >= 0) newPhotos[idx] = url;
+              return { ...l, photos: newPhotos };
+            });
+            store("rastro_lots", updated);
+            return updated;
+          });
+        }).catch(() => { /* silencioso \u2014 fica em base64 local */ });
+      } catch { /* convers\u00e3o falhou \u2014 continua em base64 local */ }
+    }
   };
 
   const sendProposal = (p: Omit<Proposal, "id" | "createdAt" | "status">) => {
@@ -564,10 +734,19 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
     setProposals(updated); store("rastro_proposals", updated);
   };
 
-  const logout = () => { setUser(null); localStorage.removeItem("rastro_user"); };
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem("rastro_user");
+    if (API_ENABLED) api.token.clear();
+  };
 
   // LGPD art. 18 — direito de exclusão
   const deleteAccount = () => {
+    if (API_ENABLED && api.token.get()) {
+      // Tenta apagar no servidor (best-effort; falha silenciosa não bloqueia)
+      api.farms.deleteAccount().catch(() => {});
+      api.token.clear();
+    }
     ["rastro_user", "rastro_lots", "rastro_events", "rastro_lgpd", "rastro_proposals"].forEach(k => localStorage.removeItem(k));
     setUser(null); setLots([]); setEvents([]); setProposals([]);
   };
@@ -785,7 +964,7 @@ const TopBar = ({ title, onBack, right }: { title: string; onBack?: () => void; 
   <div className="sticky top-0 z-50 bg-bg text-text border-b border-white/10">
     <div className="max-w-5xl mx-auto px-4 md:px-8 py-4 flex items-center">
       {onBack && <button onClick={onBack} className="mr-4 text-text hover:text-accent transition-colors"><ChevronLeft size={24} /></button>}
-      <h1 className="text-base md:text-lg font-black uppercase tracking-tighter flex-1 truncate">{title}</h1>
+      <h1 className="text-base md:text-lg font-extrabold uppercase tracking-tight flex-1 truncate">{title}</h1>
       {right && <div>{right}</div>}
     </div>
   </div>
@@ -850,9 +1029,9 @@ const SidebarNav = ({ active, onNav, onLogout }: { active: number; onNav: (s: nu
   return (
   <aside className="hidden md:flex flex-col bg-bg border-r border-white/10 self-start sticky top-0 h-screen z-40 w-16 lg:w-56 shrink-0">
     {/* Logo */}
-    <div className="h-16 border-b border-white/10 flex items-center justify-center lg:justify-start lg:px-6 gap-3 shrink-0">
-      <span className="font-black text-base tracking-tighter uppercase text-text">R™</span>
-      <span className="hidden lg:block font-black text-base tracking-tighter uppercase text-text">Rastro</span>
+    <div className="h-16 border-b border-white/10 flex items-center justify-center lg:justify-start lg:px-5 shrink-0">
+      <Logo className="hidden lg:block" />
+      <Sprout size={22} className="lg:hidden text-accent" />
     </div>
     {/* Nav items */}
     <nav className="flex-1 py-3 overflow-y-auto flex flex-col gap-0.5">
@@ -920,9 +1099,17 @@ const Field = ({ label, placeholder, tall, type = "text", value, onChange, error
   </div>
 );
 
-const Logo = ({ className = "" }: { className?: string }) => (
-  <img src="/logo-quem-produz.svg" alt="Quem Produz" className={`w-auto object-contain logo-adaptive ${className}`} style={{ height: 52 }} />
-);
+const Logo = ({ className = "", height = 38 }: { className?: string; height?: number }) => {
+  const { theme } = useContext(ThemeContext);
+  return (
+    <img
+      src={theme === "light" ? "/logo-dark.svg" : "/logo-light.svg"}
+      alt="Quem Produz"
+      className={`w-auto object-contain ${className}`}
+      style={{ height }}
+    />
+  );
+};
 
 const Btn = ({ children, onClick, full, outline, small, icon: Icon, disabled }: { children: React.ReactNode; onClick?: () => void; full?: boolean; outline?: boolean; small?: boolean; icon?: React.ElementType; disabled?: boolean }) => (
   <motion.button whileTap={{ scale: disabled ? 1 : 0.98 }} onClick={disabled ? undefined : onClick}
@@ -1546,7 +1733,7 @@ const FarmsMapSection = ({ go, sectionRef }: { go: (s: number) => void; sectionR
       <div className="max-w-6xl mx-auto">
         <motion.div initial={{ y: 20, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} className="mb-8">
           <span className="text-[9px] font-bold uppercase tracking-widest text-accent mb-3 block">Mapa Global · Global Map</span>
-          <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-text mb-3">Fazendas Rastreadas</h2>
+          <h2 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tight text-text mb-3">Fazendas Rastreadas</h2>
           <p className="text-sm text-text/50 max-w-lg">
             Propriedades com rastreabilidade certificada, verificadas por EUDR, PRODES/INPE e registro digital.
           </p>
@@ -1830,7 +2017,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[8px] font-bold uppercase tracking-widest text-accent/70 mb-2">Quem Produz · Brasil</p>
-            <h1 className="text-[2.6rem] font-black uppercase tracking-tighter leading-[0.88] text-text">
+            <h1 className="text-[2.6rem] font-extrabold uppercase tracking-tight leading-[0.88] text-text">
               Vitrine<br />de Fazendas
             </h1>
           </div>
@@ -2019,7 +2206,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
               <div className="flex items-start justify-between mb-5">
                 <div>
                   <p className="text-[9px] font-bold uppercase tracking-widest text-accent mb-1">Nova Proposta</p>
-                  <h3 className="text-lg font-black uppercase tracking-tighter text-text leading-tight">{proposalTarget.farmName}</h3>
+                  <h3 className="text-lg font-extrabold uppercase tracking-tight text-text leading-tight">{proposalTarget.farmName}</h3>
                   <p className="text-[9px] text-white/40 mt-0.5 flex items-center gap-1"><MapPin size={8} />{proposalTarget.location}</p>
                 </div>
                 <button onClick={() => setProposalTarget(null)} className="text-white/40 hover:text-text transition-colors mt-1"><X size={18} /></button>
@@ -2179,7 +2366,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
           <div className="md:grid md:grid-cols-[1fr_400px] lg:grid-cols-[1fr_440px] md:gap-14 lg:gap-20 md:items-center">
             {/* Left: Copy */}
             <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>
-              <h1 className="font-black uppercase tracking-tighter leading-[0.82] mb-7"
+              <h1 className="font-extrabold uppercase tracking-tight leading-[0.82] mb-7"
                 style={{ fontSize: "clamp(3.6rem,11vw,7.5rem)", fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>
                 <span className="block">{t.hero_line1}</span>
                 <span className="block text-stroke">{t.hero_line2}</span>
@@ -2301,7 +2488,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
             className="mb-12 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
             <div>
               <span className="text-[9px] font-bold uppercase tracking-widest text-accent mb-3 block">{t.farms_eudr} ✓</span>
-              <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-text mb-4"
+              <h2 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tight text-text mb-4"
                 style={{ fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>{t.farms_title}</h2>
               <p className="text-sm text-white/50 max-w-lg">{t.farms_sub}</p>
             </div>
@@ -2399,7 +2586,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
         <div className="max-w-6xl mx-auto">
           <motion.div initial={{ y: 20, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} className="mb-12">
             <span className="text-[9px] font-bold uppercase tracking-widest text-accent mb-3 block">{t.how_tag}</span>
-            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-text"
+            <h2 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tight text-text"
               style={{ fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>{t.how_title}</h2>
           </motion.div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-0 border border-white/10">
@@ -2420,7 +2607,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
         <div className="max-w-6xl mx-auto">
           <motion.div initial={{ y: 20, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} className="mb-12">
             <span className="text-[9px] font-bold uppercase tracking-widest text-accent mb-3 block">{t.benefits_tag}</span>
-            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-text"
+            <h2 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tight text-text"
               style={{ fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>{t.benefits_title}</h2>
           </motion.div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -2445,7 +2632,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
         <div className="absolute inset-0 opacity-[0.018]" style={{ backgroundImage: "linear-gradient(#E0FF22 1px,transparent 1px),linear-gradient(90deg,#E0FF22 1px,transparent 1px)", backgroundSize: "40px 40px" }} />
         <motion.div initial={{ y: 20, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} className="max-w-2xl mx-auto relative z-10">
           <div className="text-accent mb-6"><Award size={40} className="mx-auto" /></div>
-          <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-text mb-4"
+          <h2 className="text-3xl md:text-5xl font-extrabold uppercase tracking-tight text-text mb-4"
             style={{ fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>{t.footer_cta}</h2>
           <p className="text-sm text-white/50 mb-10">{t.footer_sub}</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -2529,8 +2716,46 @@ const SCadastro = ({ go }: { go: (s: number) => void }) => {
     if (!validateEmail(form.email)) errs.email = "E-mail inválido";
     if (form.password.length < 6 || form.password.length > 128) errs.password = "Entre 6 e 128 caracteres";
     if (Object.keys(errs).length) { setErrors(errs); return; }
-    const hashedPwd = await hashPassword(form.password);
     const isProdutor = role === "produtor" || role === null;
+
+    // Se o backend está disponível, registra na API (Supabase) e usa JWT
+    if (API_ENABLED) {
+      try {
+        const { token: jwt, user: apiUser } = await api.auth.register({
+          email: form.email,
+          password: form.password,
+          farmName: form.farmName,
+          name: form.name || undefined,
+          phone: form.phone || undefined,
+        });
+        api.token.set(jwt);
+        // Salva localmente o user mapeado (com extras locais como role/cnpj/products)
+        saveUser({
+          ...form,
+          role: role ?? "produtor",
+          password: "", // senha fica só no servidor
+          products,
+          certs: [],
+          description: form.history,
+          logo,
+          logoTransform,
+          cnpj: form.cnpj || undefined,
+          // Garante que o farmName/email do servidor sejam respeitados
+          farmName: apiUser.farmName,
+          email: apiUser.email,
+        });
+        addToast(isProdutor ? "Fazenda criada com sucesso!" : "Conta criada com sucesso!");
+        go(3);
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Erro ao criar conta";
+        setErrors({ email: msg });
+        return;
+      }
+    }
+
+    // Fallback: modo offline (localStorage apenas)
+    const hashedPwd = await hashPassword(form.password);
     saveUser({
       ...form,
       role: role ?? "produtor",
@@ -2552,7 +2777,7 @@ const SCadastro = ({ go }: { go: (s: number) => void }) => {
       <TopBar title="Criar conta" onBack={() => go(0)} right={<ThemeToggle />} />
       <div className="max-w-lg mx-auto px-6 py-10">
         <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-2">Passo 1 de 2</p>
-        <h2 className="text-2xl font-black uppercase tracking-tighter text-text mb-1 leading-tight">Como você atua?</h2>
+        <h2 className="text-2xl font-extrabold uppercase tracking-tight text-text mb-1 leading-tight">Como você atua?</h2>
         <p className="text-xs text-white/40 mb-8">Selecione o perfil que melhor descreve você.</p>
         <div className="flex flex-col gap-3">
           {ROLE_OPTIONS.map(opt => {
@@ -2661,15 +2886,30 @@ const SLogin = ({ go }: { go: (s: number) => void }) => {
     if (!email || !password) { setError("Preencha e-mail e senha."); return; }
     const rateLimitMsg = checkRateLimit();
     if (rateLimitMsg) { setError(rateLimitMsg); return; }
+
+    // Se o backend está disponível, autentica na API (Supabase)
+    if (API_ENABLED) {
+      try {
+        const { token: jwt, user: apiUser } = await api.auth.login(email, password);
+        api.token.set(jwt);
+        resetRateLimit();
+        // Funde dados do servidor com o que estiver localmente (governança/EUDR)
+        saveUser(mergeApiUserIntoLocal(apiUser, user));
+        addToast("Bem-vindo de volta!");
+        go(3);
+        return;
+      } catch {
+        setError("Credenciais inválidas.");
+        return;
+      }
+    }
+
+    // Fallback: modo offline (localStorage)
     if (!user) { setError("Credenciais inválidas."); return; }
-    const hashedPwd = await hashPassword(password);
-    const sha256Pwd = await sha256(password);
-    // Suporte a senhas legadas (SHA-256 antigo) e novas (PBKDF2)
-    const pwdMatch = user.password === hashedPwd || user.password === sha256Pwd;
+    const pwdMatch = await verifyPassword(password, user.password);
     if (user.email !== email || !pwdMatch) { setError("Credenciais inválidas."); return; }
     resetRateLimit();
-    // Migrar senha SHA-256/plaintext para PBKDF2 silenciosamente
-    if (user.password !== hashedPwd) saveUser({ ...user, password: hashedPwd });
+    if (!user.password.startsWith("pbkdf2:")) saveUser({ ...user, password: await hashPassword(password) });
     addToast("Bem-vindo de volta!");
     go(3);
   };
@@ -2725,7 +2965,7 @@ const SDashboard = ({ go }: { go: (s: number) => void }) => {
       </div>
       {/* Header desktop — título da página */}
       <div className="hidden md:flex bg-bg px-8 py-5 items-center justify-between border-b border-white/10 sticky top-0 z-40">
-        <h1 className="text-lg font-black uppercase tracking-tighter text-text">Início</h1>
+        <h1 className="text-lg font-extrabold uppercase tracking-tight text-text">Início</h1>
         <div className="relative cursor-pointer hover:text-accent transition-colors text-text" onClick={() => setShowNotifs(p => !p)}>
           <Bell size={20} />
           {events.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />}
@@ -2782,7 +3022,7 @@ const SDashboard = ({ go }: { go: (s: number) => void }) => {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[8px] font-bold uppercase tracking-widest text-white/30">{roleLabel}</span>
                 </div>
-                <h2 className="text-xl font-black uppercase tracking-tighter text-text leading-tight truncate">{user?.farmName || "Minha conta"}</h2>
+                <h2 className="text-xl font-extrabold uppercase tracking-tight text-text leading-tight truncate">{user?.farmName || "Minha conta"}</h2>
                 {isProdutor
                   ? <p className="text-[10px] font-bold uppercase tracking-widest text-accent mt-1.5 flex items-center gap-1.5"><MapPin size={10} /> {totalArea > 0 ? `~${totalArea} ha` : "Área não definida"}</p>
                   : <p className="text-[10px] font-bold uppercase tracking-widest text-accent mt-1.5 flex items-center gap-1.5"><MapPin size={10} /> {user?.location || "Localização não definida"}</p>
@@ -2828,7 +3068,7 @@ const SDashboard = ({ go }: { go: (s: number) => void }) => {
                 <div className="border border-accent p-5 mb-8 flex items-center justify-between bg-accent/5 rounded-2xl">
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-widest text-accent mb-2">Status EUDR</div>
-                    <div className="text-xl font-black uppercase tracking-tighter text-text">{lots.length}/{lots.length} Conformes</div>
+                    <div className="text-xl font-extrabold uppercase tracking-tight text-text">{lots.length}/{lots.length} Conformes</div>
                   </div>
                   <div className="text-accent"><CheckCircle2 size={32} /></div>
                 </div>

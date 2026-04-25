@@ -9,6 +9,7 @@ import { authRouter } from "./routes/auth";
 import { farmsRouter } from "./routes/farms";
 import { lotsRouter } from "./routes/lots";
 import { photosRouter } from "./routes/photos";
+import { webhookRouter } from "./routes/webhook";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -67,6 +68,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/farms", farmsRouter);
 app.use("/api/lots", lotsRouter);
 app.use("/api/photos", photosRouter);
+app.use("/api/webhook", webhookRouter);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) =>

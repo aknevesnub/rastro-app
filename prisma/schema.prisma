@@ -3,86 +3,124 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id             String    @id @default(uuid())
-  email          String    @unique
-  password       String
-  farmName       String
-  name           String?
-  phone          String?
-  location       String?
-  area           Float?
-  description    String?
-  logoUrl        String?
-  coverUrl       String?
-  logoTransform  Json?
-  coverTransform Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String         @unique
+  password        String
+  farmName        String         @map("farm_name")
+  name            String?
+  phone           String?
+  location        String?
+  area            Float?
+  description     String?
+  logoUrl         String?        @map("logo_url")
+  coverUrl        String?        @map("cover_url")
+  logoTransform   Json?          @map("logo_transform")
+  coverTransform  Json?          @map("cover_transform")
+  plan            String         @default("free")
+  isPublic        Boolean        @default(true) @map("is_public")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  events          Event[]
+  lots            Lot[]
+  proposals       Proposal[]
+  certs           UserCert[]
+  products        UserProduct[]
 
-  lots     Lot[]
-  products UserProduct[]
-  certs    UserCert[]
-  events   Event[]
-}
-
-model UserProduct {
-  id     String @id @default(uuid())
-  userId String
-  name   String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model UserCert {
-  id     String @id @default(uuid())
-  userId String
-  name   String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([email])
+  @@index([isPublic])
+  @@map("users")
 }
 
 model Lot {
-  id            String    @id @default(uuid())
-  userId        String
-  name          String
-  crop          String
-  area          Float?
-  harvestDate   DateTime?
-  expiryDate    DateTime?
-  status        String    @default("active")
-  eudrCompliant Boolean   @default(false)
-  notes         String?
-  geoPolygon    Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  name           String
+  crop           String
+  area           Float?
+  harvestDate    DateTime?  @map("harvest_date") @db.Timestamptz(6)
+  expiryDate     DateTime?  @map("expiry_date") @db.Timestamptz(6)
+  status         String     @default("active")
+  eudrCompliant  Boolean    @default(false) @map("eudr_compliant")
+  notes          String?
+  geoPolygon     Json?      @map("geo_polygon")
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime   @default(now()) @map("updated_at") @db.Timestamptz(6)
+  events         Event[]
+  photos         LotPhoto[]
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  photos LotPhoto[]
-  events Event[]
+  @@index([createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("lots")
 }
 
 model LotPhoto {
-  id        String   @id @default(uuid())
-  lotId     String
-  url       String
-  transform Json?
-  position  Int      @default(0)
-  createdAt DateTime @default(now())
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lotId      String   @map("lot_id") @db.Uuid
+  url        String
+  transform  Json?
+  position   Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lot        Lot      @relation(fields: [lotId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  lot Lot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  @@index([lotId])
+  @@map("lot_photos")
 }
 
 model Event {
-  id        String   @id @default(uuid())
-  userId    String
-  lotId     String?
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  lotId     String?  @map("lot_id") @db.Uuid
   type      String
   message   String?
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lot       Lot?     @relation(fields: [lotId], references: [id], onUpdate: NoAction)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lot  Lot?  @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("events")
+}
+
+model Proposal {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  toUserId    String   @map("to_user_id") @db.Uuid
+  fromEmail   String   @map("from_email")
+  fromName    String   @map("from_name")
+  fromCompany String?  @map("from_company")
+  fromRole    String   @map("from_role")
+  products    Json     @default("[]")
+  volume      String?
+  message     String?
+  status      String   @default("pendente")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user        User     @relation(fields: [toUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([toUserId])
+  @@map("proposals")
+}
+
+model UserProduct {
+  id     String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  name   String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@map("user_products")
+}
+
+model UserCert {
+  id     String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  name   String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@map("user_certs")
 }

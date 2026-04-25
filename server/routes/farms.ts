@@ -15,6 +15,7 @@ const PUBLIC_SELECT = {
   coverUrl: true,
   logoTransform: true,
   coverTransform: true,
+  plan: true,
   createdAt: true,
   products: true,
   certs: true,
@@ -24,6 +25,7 @@ const PUBLIC_SELECT = {
 farmsRouter.get("/", async (_req, res) => {
   try {
     const farms = await prisma.user.findMany({
+      where: { isPublic: true },   // zero-trust: nunca expõe quem optou por privacidade
       select: {
         ...PUBLIC_SELECT,
         lots: { select: { id: true, eudrCompliant: true, area: true } },
@@ -81,8 +83,26 @@ farmsRouter.put("/me", authenticate, async (req: AuthRequest, res) => {
     const {
       farmName, name, phone, location, area, description,
       logoUrl, coverUrl, logoTransform, coverTransform,
+      isPublic,    // produtor pode controlar visibilidade
       products, certs,
+      // NOTA: `plan` NÃO aceito aqui — só muda via webhook de pagamento
     } = req.body;
+
+    // Validação de tamanho dos campos livres
+    if (farmName !== undefined && String(farmName).trim().length > 100)
+      return res.status(400).json({ error: "Nome da fazenda: máx 100 caracteres" });
+    if (name !== undefined && String(name ?? "").trim().length > 100)
+      return res.status(400).json({ error: "Nome: máx 100 caracteres" });
+    if (phone !== undefined && String(phone ?? "").trim().length > 20)
+      return res.status(400).json({ error: "Telefone: máx 20 caracteres" });
+    if (location !== undefined && String(location ?? "").length > 200)
+      return res.status(400).json({ error: "Localização: máx 200 caracteres" });
+    if (description !== undefined && String(description ?? "").length > 2000)
+      return res.status(400).json({ error: "Descrição: máx 2000 caracteres" });
+    if (Array.isArray(products) && products.length > 20)
+      return res.status(400).json({ error: "Máximo de 20 produtos" });
+    if (Array.isArray(certs) && certs.length > 20)
+      return res.status(400).json({ error: "Máximo de 20 certificações" });
 
     const user = await prisma.user.update({
       where: { id: req.userId },
@@ -97,6 +117,7 @@ farmsRouter.put("/me", authenticate, async (req: AuthRequest, res) => {
         ...(coverUrl !== undefined && { coverUrl }),
         ...(logoTransform !== undefined && { logoTransform }),
         ...(coverTransform !== undefined && { coverTransform }),
+        ...(isPublic !== undefined && { isPublic: Boolean(isPublic) }),
       },
     });
 
