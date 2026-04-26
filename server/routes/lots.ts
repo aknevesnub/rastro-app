@@ -6,6 +6,11 @@ export const lotsRouter = Router();
 
 // GET /api/lots/public/:id — público para QR code scan
 lotsRouter.get("/public/:id", async (req, res) => {
+  // Valida formato UUID antes de consultar (Prisma joga 500 em IDs malformados)
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(req.params.id)) {
+    return res.status(404).json({ error: "Lote não encontrado" });
+  }
   try {
     const lot = await prisma.lot.findUnique({
       where: { id: req.params.id },
@@ -28,7 +33,8 @@ lotsRouter.get("/public/:id", async (req, res) => {
 
     if (!lot) return res.status(404).json({ error: "Lote não encontrado" });
     res.json(lot);
-  } catch {
+  } catch (err) {
+    console.error("public lot error", err);
     res.status(500).json({ error: "Erro interno" });
   }
 });

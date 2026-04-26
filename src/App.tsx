@@ -576,10 +576,35 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Hidrata lotes do banco (faz merge com locais por apiId)
       api.lots.list()
-        .then(apiLots => {
+        .then(async apiLots => {
+          // Backfill: lotes locais sem apiId precisam ser sincronizados agora
+          const localRaw = localStorage.getItem("rastro_lots");
+          const localLots: Lot[] = localRaw ? JSON.parse(localRaw) : [];
+          const unsynced = localLots.filter(l => !l.apiId);
+
+          const backfilled: { localId: string; apiId: string }[] = [];
+          for (const l of unsynced) {
+            try {
+              const created = await api.lots.create({
+                name: l.name,
+                crop: l.crop,
+                area: l.area ? parseFloat(l.area) : undefined,
+                status: l.status,
+                notes: l.notes,
+                geoPolygon: l.mapPoints?.length ? l.mapPoints.map(([lat, lng]) => ({ lat, lng })) : undefined,
+              });
+              backfilled.push({ localId: l.id, apiId: created.id });
+            } catch (err) {
+              console.warn("Falha ao sincronizar lote local", l.id, err);
+            }
+          }
+
+          // Recarrega depois do backfill para incluir os recém-sincronizados
+          const finalApiLots = backfilled.length > 0 ? await api.lots.list() : apiLots;
+
           setLots(prev => {
             // Lotes do banco preferem; mescla com locais que ainda n\u00e3o sincronizaram
-            const fromApi: Lot[] = apiLots.map(a => ({
+            const fromApi: Lot[] = finalApiLots.map(a => ({
               id: a.id, // usa o UUID do banco
               apiId: a.id,
               name: a.name,
@@ -594,7 +619,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
               photoTransforms: (a.photos ?? []).map(p => p.transform as LogoTransform).filter(Boolean),
               mapPoints: (a.geoPolygon as { lat: number; lng: number }[] | undefined)?.map(g => [g.lat, g.lng] as [number, number]) ?? [],
             }));
-            const localOnly = prev.filter(l => !l.apiId);
+            const localOnly = prev.filter(l => !l.apiId && !backfilled.find(b => b.localId === l.id));
             const combined = [...fromApi, ...localOnly];
             store("rastro_lots", combined);
             return combined;
