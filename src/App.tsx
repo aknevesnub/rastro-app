@@ -2363,11 +2363,11 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
             </span>
           </motion.div>
 
-          <div className="md:grid md:grid-cols-[1fr_400px] lg:grid-cols-[1fr_440px] md:gap-14 lg:gap-20 md:items-center">
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-20 lg:items-center">
             {/* Left: Copy */}
             <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>
-              <h1 className="font-extrabold uppercase tracking-tight leading-[0.82] mb-7 break-words"
-                style={{ fontSize: "clamp(2.5rem,13vw,7.5rem)", fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>
+              <h1 className="font-extrabold uppercase tracking-tight leading-[0.82] mb-7"
+                style={{ fontSize: "clamp(2rem,7vw,5.25rem)", fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>
                 <span className="block">{t.hero_line1}</span>
                 <span className="block text-stroke">{t.hero_line2}</span>
                 <span className="block text-accent">{t.hero_line3}</span>
@@ -2410,7 +2410,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
             </motion.div>
 
             {/* Right: Live farm profile preview */}
-            <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="hidden md:block">
+            <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="hidden lg:block">
               <div className="border border-white/10 overflow-hidden bg-white/[0.015]">
                 {/* Farm header */}
                 <div className="h-[88px] bg-gradient-to-br from-accent/8 via-white/[0.015] to-transparent border-b border-white/10 relative flex items-end px-4 py-3">
