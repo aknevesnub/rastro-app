@@ -1891,7 +1891,53 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
     };
   }, [user]);
 
-  const allEntries = useMemo(() => [...(realEntry ? [realEntry] : []), ...VITRINE_DEMO], [realEntry]);
+  // Busca fazendas reais cadastradas no backend (lista pública)
+  const [backendFarms, setBackendFarms] = useState<VitrineEntry[]>([]);
+  useEffect(() => {
+    if (!API_ENABLED) return;
+    api.farms.list().then(list => {
+      // Coords padrão por bioma (centro aproximado) — usadas até termos lat/lng no schema
+      const BIOME_DEFAULT_COORDS: Record<string, [number, number]> = {
+        "cerrado":         [-15.77, -47.92],
+        "amazônia":        [-3.13,  -60.02],
+        "mata atlântica":  [-22.91, -43.20],
+        "caatinga":        [-9.38,  -40.50],
+        "pampa":           [-31.33, -54.10],
+        "pantanal":        [-18.99, -57.65],
+      };
+      const entries: VitrineEntry[] = list.map(f => {
+        // jitter determinístico pra fazendas no mesmo bioma não ficarem empilhadas
+        const seed = (f.id ?? f.farmName).split("").reduce((s, c) => s + c.charCodeAt(0), 0);
+        const dLat = ((seed * 13) % 100) / 100 - 0.5;  // ±0.5°
+        const dLng = ((seed * 17) % 100) / 100 - 0.5;
+        const biome = "cerrado"; // schema ainda não tem biome — default
+        const [bLat, bLng] = BIOME_DEFAULT_COORDS[biome];
+        return {
+          farmName: f.farmName,
+          name: f.name ?? "",
+          location: f.location ?? "Brasil",
+          biome,
+          lat: bLat + dLat,
+          lng: bLng + dLng,
+          products: (f.products ?? []).map(p => p.name),
+          certs: (f.certs ?? []).map(c => c.name),
+          lots: 0,
+          area: f.area ?? 0,
+          description: f.description ?? "Produtor rural cadastrado no Quem Produz.",
+          logo: f.logoUrl,
+          isReal: true,
+        };
+      });
+      setBackendFarms(entries);
+    }).catch(() => { /* silencioso */ });
+  }, []);
+
+  const allEntries = useMemo(() => {
+    // Evita duplicar a fazenda do user logado (que já está em realEntry)
+    const myName = (user?.farmName || "").toLowerCase().trim();
+    const others = backendFarms.filter(f => f.farmName.toLowerCase().trim() !== myName);
+    return [...(realEntry ? [realEntry] : []), ...others, ...VITRINE_DEMO];
+  }, [realEntry, backendFarms, user]);
   const allCrops = useMemo(() => Array.from(new Set(allEntries.flatMap(e => e.products))), [allEntries]);
 
   const filtered = useMemo(() => {
