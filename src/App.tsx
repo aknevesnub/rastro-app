@@ -1611,8 +1611,8 @@ const LangSwitcher = () => {
   const current = opts.find(o => o.code === lang)!;
   return (
     <div className="relative">
-      <button onClick={() => setOpen(p => !p)} className="flex items-center gap-2 px-3 py-2 border border-white/20 hover:border-accent transition-colors text-[10px] font-bold uppercase tracking-widest">
-        <Globe size={13} /><span>{current.flag} {current.code.toUpperCase()}</span><ChevronDown size={11} />
+      <button onClick={() => setOpen(p => !p)} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-2 border border-white/20 hover:border-accent transition-colors text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">
+        <Globe size={13} className="hidden md:inline" /><span>{current.flag} {current.code.toUpperCase()}</span><ChevronDown size={11} />
       </button>
       <AnimatePresence>
         {open && (
@@ -2323,7 +2323,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
 
       {/* ── Sticky Header ── */}
       <header className="sticky top-0 z-50 bg-bg/92 backdrop-blur-xl border-b border-white/8">
-        <div className="max-w-6xl mx-auto px-5 md:px-10 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-4 md:px-10 h-16 flex items-center justify-between gap-2 md:gap-4">
           <Logo className="shrink-0" />
           <nav className="hidden md:flex items-center gap-8">
             {navLinks.map(l => (
@@ -2333,13 +2333,13 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
               </button>
             ))}
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 md:gap-3">
             <ThemeToggle />
             <LangSwitcher />
-            <button onClick={() => go(2)} className="hidden md:block px-4 py-2 text-[10px] font-bold uppercase tracking-widest border border-white/20 text-text hover:border-accent hover:text-accent transition-all">
+            <button onClick={() => go(2)} className="hidden md:block px-4 py-2 text-[10px] font-bold uppercase tracking-widest border border-white/20 text-text hover:border-accent hover:text-accent transition-all whitespace-nowrap">
               {t.nav_login}
             </button>
-            <button onClick={() => go(1)} className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest bg-accent text-bg hover:bg-accent/90 transition-all">
+            <button onClick={() => go(1)} className="px-2.5 md:px-4 py-2 text-[9px] md:text-[10px] font-bold uppercase tracking-wider md:tracking-widest bg-accent text-bg hover:bg-accent/90 transition-all whitespace-nowrap shrink-0">
               {t.nav_signup}
             </button>
           </div>
