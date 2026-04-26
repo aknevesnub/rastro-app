@@ -5649,7 +5649,7 @@ const AppContent = () => {
   const [s, setS] = useState(() => lotParam ? 13 : 0);
   const { user, logout } = useContext(AppContext);
   const { theme } = useContext(ThemeContext);
-  const showNav = s >= 3 && s !== 13;
+  const showNav = !!user && s >= 3 && s !== 13 && s !== 16;
 
   useEffect(() => {
     document.body.style.backgroundColor = theme === "dark" ? "#0A0A0A" : "#F5F5F0";
