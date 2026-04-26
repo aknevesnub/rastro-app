@@ -2366,8 +2366,8 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
           <div className="md:grid md:grid-cols-[1fr_400px] lg:grid-cols-[1fr_440px] md:gap-14 lg:gap-20 md:items-center">
             {/* Left: Copy */}
             <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>
-              <h1 className="font-extrabold uppercase tracking-tight leading-[0.82] mb-7"
-                style={{ fontSize: "clamp(3.6rem,11vw,7.5rem)", fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>
+              <h1 className="font-extrabold uppercase tracking-tight leading-[0.82] mb-7 break-words"
+                style={{ fontSize: "clamp(2.5rem,13vw,7.5rem)", fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>
                 <span className="block">{t.hero_line1}</span>
                 <span className="block text-stroke">{t.hero_line2}</span>
                 <span className="block text-accent">{t.hero_line3}</span>
