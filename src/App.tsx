@@ -4364,7 +4364,8 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
     } catch { return 0; }
   })();
   const totalArea = totalAreaSource;
-  const lotUrl = `${appUrl}?lot=${lot.id}`;
+  const lotPublicId = apiLot ? apiLot.id : (localLot?.apiId || lot.id);
+  const lotUrl = `${appUrl}?lot=${lotPublicId}`;
   const st = LOT_STATUS.find(s => s.key === lot.status);
 
   const handleShare = async () => {
@@ -4510,8 +4511,9 @@ const SQRCode = ({ go }: { go: (s: number) => void }) => {
   const lot = lots.find(l => l.id === selectedId) || lots[lots.length - 1];
 
   // URL aponta para o próprio app com ?lot=ID
+  // Prefere apiId (UUID do backend) — o lot.id local é Date.now() e não funciona em outros dispositivos
   const appBase = window.location.origin + window.location.pathname;
-  const qrValue = lot ? `${appBase}?lot=${lot.id}` : appBase;
+  const qrValue = lot ? `${appBase}?lot=${lot.apiId || lot.id}` : appBase;
   const shareTitle = lot ? `${lot.name} — ${user?.farmName}` : user?.farmName || "Fazenda";
 
   if (lots.length === 0) return (
