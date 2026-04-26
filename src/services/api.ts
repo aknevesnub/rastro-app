@@ -87,7 +87,7 @@ export const lots = {
 
   getById: (id: string) => request<ApiLot>(`/api/lots/${id}`),
 
-  getPublic: (id: string) => request<ApiLot>(`/api/lots/public/${id}`),
+  getPublic: (id: string) => request<ApiLotPublic>(`/api/lots/public/${id}`),
 
   create: (data: Partial<ApiLot>) =>
     request<ApiLot>("/api/lots", {
@@ -162,6 +162,19 @@ export interface ApiLot {
   geoPolygon?: { lat: number; lng: number }[];
   photos?: ApiLotPhoto[];
   createdAt?: string;
+}
+
+export interface ApiLotPublic extends ApiLot {
+  user: {
+    id: string;
+    farmName: string;
+    location?: string;
+    area?: number;
+    logoUrl?: string;
+    logoTransform?: { scale: number; x: number; y: number };
+    products?: { id: string; name: string }[];
+    certs?: { id: string; name: string }[];
+  };
 }
 
 export interface ApiLotPhoto {

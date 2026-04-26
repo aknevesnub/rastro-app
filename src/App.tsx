@@ -4287,13 +4287,43 @@ const SGaleria = ({ go }: { go: (s: number) => void }) => {
 // ─── Tela pública do lote (acessada via QR) ───
 const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) => {
   const appUrl = window.location.origin + window.location.pathname;
+  const [apiLot, setApiLot] = useState<import("./services/api").ApiLotPublic | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Carrega dados direto do localStorage (funciona mesmo sem estar logado)
-  const user: AppUser | null = (() => { try { const u = localStorage.getItem("rastro_user"); return u ? JSON.parse(u) : null; } catch { return null; } })();
-  const lots: Lot[] = (() => { try { const l = localStorage.getItem("rastro_lots"); return l ? JSON.parse(l) : []; } catch { return []; } })();
-  const lot = lots.find(l => l.id === lotId);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    api.lots.getPublic(lotId)
+      .then(l => { if (alive) setApiLot(l); })
+      .catch(() => { if (alive) setApiLot(null); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [lotId]);
 
-  if (!lot || !user) {
+  // Fallback offline: localStorage no mesmo dispositivo do produtor
+  const localLot = useMemo(() => {
+    if (apiLot) return null;
+    try {
+      const lots: Lot[] = JSON.parse(localStorage.getItem("rastro_lots") || "[]");
+      return lots.find(l => l.id === lotId) || null;
+    } catch { return null; }
+  }, [apiLot, lotId]);
+  const localUser = useMemo(() => {
+    if (apiLot) return null;
+    try { return JSON.parse(localStorage.getItem("rastro_user") || "null") as AppUser | null; }
+    catch { return null; }
+  }, [apiLot]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-8 text-center">
+        <Logo className="mb-6" />
+        <p className="text-xs text-white/40 uppercase tracking-widest">Carregando lote...</p>
+      </div>
+    );
+  }
+
+  if (!apiLot && (!localLot || !localUser)) {
     return (
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-8 text-center">
         <Logo className="mb-6" />
@@ -4303,7 +4333,37 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
     );
   }
 
-  const totalArea = lots.reduce((a, l) => a + (Number(l.area) || 0), 0);
+  // Normaliza dados (API ou localStorage)
+  const lot = apiLot ? {
+    id: apiLot.id,
+    name: apiLot.name,
+    crop: apiLot.crop,
+    area: apiLot.area != null ? String(apiLot.area) : "",
+    date: apiLot.harvestDate ? apiLot.harvestDate.slice(0, 10) : "",
+    tipo: 0,
+    status: (apiLot.status === "colhendo" || apiLot.status === "colhido" ? apiLot.status : "ativo") as Lot["status"],
+    notes: apiLot.notes || "",
+    photos: (apiLot.photos || []).map(p => p.url),
+    photoTransforms: (apiLot.photos || []).map(p => p.transform || { scale: 1, x: 0, y: 0 }),
+    mapPoints: (apiLot.geoPolygon || []).map(p => [p.lat, p.lng] as [number, number]),
+  } : localLot!;
+
+  const user = apiLot ? {
+    farmName: apiLot.user.farmName,
+    location: apiLot.user.location,
+    description: undefined as string | undefined,
+    logo: apiLot.user.logoUrl,
+    logoTransform: apiLot.user.logoTransform,
+    certs: (apiLot.user.certs || []).map(c => c.name),
+  } : localUser!;
+
+  const totalAreaSource = apiLot ? (apiLot.user.area ?? 0) : (() => {
+    try {
+      const lots: Lot[] = JSON.parse(localStorage.getItem("rastro_lots") || "[]");
+      return lots.reduce((a, l) => a + (Number(l.area) || 0), 0);
+    } catch { return 0; }
+  })();
+  const totalArea = totalAreaSource;
   const lotUrl = `${appUrl}?lot=${lot.id}`;
   const st = LOT_STATUS.find(s => s.key === lot.status);
 
