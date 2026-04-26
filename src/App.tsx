@@ -480,6 +480,7 @@ interface AppCtx {
   events: AppEvent[];
   proposals: Proposal[];
   currentLotId: string | null;
+  viewingFarmId: string | null;        // ID da fazenda sendo visualizada (vitrine pública)
   toasts: Toast[];
   saveUser: (d: AppUser) => boolean;
   addLot: (l: Omit<Lot, "id">) => string;
@@ -489,6 +490,7 @@ interface AppCtx {
   deleteAccount: () => void;
   logout: () => void;
   setCurrentLotId: (id: string | null) => void;
+  setViewingFarmId: (id: string | null) => void;
   addToast: (msg: string, type?: Toast["type"]) => void;
   removeToast: (id: string) => void;
   sendProposal: (p: Omit<Proposal, "id" | "createdAt" | "status">) => void;
@@ -542,6 +544,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [currentLotId, setCurrentLotId] = useState<string | null>(null);
+  const [viewingFarmId, setViewingFarmId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => {
@@ -759,7 +762,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const removeToast = (id: string) => setToasts(p => p.filter(t => t.id !== id));
 
   return (
-    <AppContext.Provider value={{ user, saveUser, lots, addLot, updateLot, deleteLot, addPhotoToLot, deleteAccount, events, proposals, logout, currentLotId, setCurrentLotId, toasts, addToast, removeToast, sendProposal, updateProposalStatus }}>
+    <AppContext.Provider value={{ user, saveUser, lots, addLot, updateLot, deleteLot, addPhotoToLot, deleteAccount, events, proposals, logout, currentLotId, setCurrentLotId, viewingFarmId, setViewingFarmId, toasts, addToast, removeToast, sendProposal, updateProposalStatus }}>
       {children}
     </AppContext.Provider>
   );
@@ -1826,9 +1829,10 @@ const BIOME_CONFIG: Record<string, { label: string; color: string; center: [numb
 };
 
 type VitrineEntry = {
+  id?: string; // ID do banco (apenas para isReal=true)
   farmName: string; name: string; location: string; biome: string;
   lat: number; lng: number; products: string[]; certs: string[];
-  lots: number; area: number; description: string; logo?: string; isReal?: boolean;
+  lots: number; area: number; description: string; logo?: string; cover?: string; isReal?: boolean;
 };
 
 const VITRINE_DEMO: VitrineEntry[] = [
@@ -1847,7 +1851,7 @@ const VITRINE_DEMO: VitrineEntry[] = [
 ];
 
 const SVitrine = ({ go }: { go: (s: number) => void }) => {
-  const { user, sendProposal, addToast } = useContext(AppContext);
+  const { user, sendProposal, addToast, setViewingFarmId } = useContext(AppContext);
   const isComprador = user?.role && user.role !== "produtor";
   const [proposalTarget, setProposalTarget] = useState<VitrineEntry | null>(null);
   const [propForm, setPropForm] = useState({ message: "", volume: "", products: [] as string[] });
@@ -1913,6 +1917,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
         const biome = "cerrado"; // schema ainda não tem biome — default
         const [bLat, bLng] = BIOME_DEFAULT_COORDS[biome];
         return {
+          id: f.id,
           farmName: f.farmName,
           name: f.name ?? "",
           location: f.location ?? "Brasil",
@@ -1925,6 +1930,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
           area: f.area ?? 0,
           description: f.description ?? "Produtor rural cadastrado no Quem Produz.",
           logo: f.logoUrl,
+          cover: f.coverUrl,
           isReal: true,
         };
       });
@@ -2097,7 +2103,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0">
                   {activeEntry.isReal && (
-                    <button onClick={() => go(5)} style={{ background: "#E0FF22", color: "#111" }}
+                    <button onClick={() => { setViewingFarmId(activeEntry.id ?? null); go(5); }} style={{ background: "#E0FF22", color: "#111" }}
                       className="py-1.5 px-3 text-[8px] font-black uppercase tracking-widest rounded-lg whitespace-nowrap">
                       Ver perfil →
                     </button>
@@ -3465,19 +3471,60 @@ const SEditProfile = ({ go }: { go: (s: number) => void }) => {
 };
 
 const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
-  const { user, lots, events, addToast } = useContext(AppContext);
-  const totalArea = lots.reduce((acc, l) => acc + (Number(l.area) || 0), 0);
-  const profileUrl = `${window.location.origin}?farm=${encodeURIComponent(user?.farmName || "")}`;
+  const { user, lots, events, addToast, viewingFarmId, setViewingFarmId } = useContext(AppContext);
+  const isViewingOther = !!viewingFarmId && viewingFarmId !== user?.id;
+  const [viewedFarm, setViewedFarm] = useState<import("./services/api").ApiUser | null>(null);
+  const [viewedLots, setViewedLots] = useState<import("./services/api").ApiLot[]>([]);
+
+  useEffect(() => {
+    if (isViewingOther && viewingFarmId) {
+      api.farms.getById(viewingFarmId).then(setViewedFarm).catch(() => setViewedFarm(null));
+    } else {
+      setViewedFarm(null);
+      setViewedLots([]);
+    }
+  }, [viewingFarmId, isViewingOther]);
+
+  // Display data: viewed farm when browsing public, else logged-in user
+  const displayFarmName = isViewingOther ? viewedFarm?.farmName : user?.farmName;
+  const displayLocation = isViewingOther ? viewedFarm?.location : user?.location;
+  const displayDescription = isViewingOther ? viewedFarm?.description : user?.description;
+  const displayCover = isViewingOther ? viewedFarm?.coverUrl : user?.cover;
+  const displayCoverTransform = isViewingOther ? viewedFarm?.coverTransform : user?.coverTransform;
+  const displayLogo = isViewingOther ? viewedFarm?.logoUrl : user?.logo;
+  const displayLogoTransform = isViewingOther ? viewedFarm?.logoTransform : user?.logoTransform;
+  const displayProducts = isViewingOther
+    ? (viewedFarm?.products?.map(p => p.name) ?? [])
+    : (user?.products ?? []);
+  const displayCerts = isViewingOther
+    ? (viewedFarm?.certs?.map(c => c.name) ?? [])
+    : (user?.certs ?? []);
+  const displayLots = isViewingOther ? viewedLots : lots;
+  const displayEvents = isViewingOther ? [] : events;
+
+  const totalArea = displayLots.reduce((acc, l) => acc + (Number(l.area) || 0), 0);
+  const profileUrl = `${window.location.origin}?farm=${encodeURIComponent(displayFarmName || "")}`;
   const [galleryIdx, setGalleryIdx] = useState<number | null>(null);
 
-  // Aggregate all lot photos for the gallery
-  const allPhotos = lots.flatMap(l =>
-    (l.photos || []).map((src, pi) => ({ src, lotName: l.name, crop: l.crop, transform: l.photoTransforms?.[pi] }))
-  );
+  // Aggregate all lot photos for the gallery (logged-in user only — backend lots type differs)
+  const allPhotos = isViewingOther
+    ? []
+    : lots.flatMap(l =>
+        (l.photos || []).map((src, pi) => ({ src, lotName: l.name, crop: l.crop, transform: l.photoTransforms?.[pi] }))
+      );
 
-  const products = user?.products?.length
-    ? user.products
-    : [...new Set(lots.map(l => l.crop).filter(Boolean))];
+  const products = displayProducts.length
+    ? displayProducts
+    : [...new Set(displayLots.map(l => l.crop).filter(Boolean))];
+
+  const handleBack = () => {
+    if (isViewingOther) {
+      setViewingFarmId(null);
+      go(16);
+    } else {
+      go(3);
+    }
+  };
 
   const eventConfig: Record<AppEvent["type"], { label: string; labelEn: string; color: string; dot: string }> = {
     lote:   { label: "Novo Lote",   labelEn: "New Lot",       color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25", dot: "bg-emerald-500" },
@@ -3499,38 +3546,38 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
       {/* ── Hero cover ── */}
       <div className="h-64 md:h-80 relative">
         <div className="absolute inset-0 overflow-hidden">
-          {user?.cover
-            ? <img src={user.cover} alt="cover" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${user.coverTransform?.x ?? 0}px, ${user.coverTransform?.y ?? 0}px) scale(${user.coverTransform?.scale ?? 1})`, transformOrigin: "center" }} />
+          {displayCover
+            ? <img src={displayCover} alt="cover" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} />
             : <img src="https://picsum.photos/seed/farmcover/800/400" alt="Cover" className="w-full h-full object-cover grayscale opacity-50" />}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/40 to-transparent" />
-        <button onClick={() => go(3)} className="absolute top-4 left-4 w-10 h-10 bg-bg/60 backdrop-blur-md flex items-center justify-center text-text border border-white/20 rounded-xl hover:border-accent transition-colors">
+        <button onClick={handleBack} className="absolute top-4 left-4 w-10 h-10 bg-bg/60 backdrop-blur-md flex items-center justify-center text-text border border-white/20 rounded-xl hover:border-accent transition-colors">
           <ChevronLeft size={22} />
         </button>
-        <button onClick={() => doShare(profileUrl, user?.farmName || "Fazenda", addToast)} className="absolute top-4 right-4 w-10 h-10 bg-bg/60 backdrop-blur-md flex items-center justify-center text-text border border-white/20 hover:border-accent transition-colors rounded-xl">
+        <button onClick={() => doShare(profileUrl, displayFarmName || "Fazenda", addToast)} className="absolute top-4 right-4 w-10 h-10 bg-bg/60 backdrop-blur-md flex items-center justify-center text-text border border-white/20 hover:border-accent transition-colors rounded-xl">
           <Share2 size={17} />
         </button>
         {/* Logo badge */}
         <div className="absolute -bottom-12 left-6 w-24 h-24 bg-bg p-1 border-2 border-accent/40 rounded-2xl z-10 overflow-hidden shadow-2xl">
-          {user?.logo ? <LogoImg src={user.logo} transform={user.logoTransform} /> : <img src="https://picsum.photos/seed/farmlogo/200/200" alt="Logo" className="w-full h-full object-cover grayscale rounded-xl" />}
+          {displayLogo ? <LogoImg src={displayLogo} transform={displayLogoTransform} /> : <img src="https://picsum.photos/seed/farmlogo/200/200" alt="Logo" className="w-full h-full object-cover grayscale rounded-xl" />}
         </div>
       </div>
 
       {/* ── Identity ── */}
       <div className="pt-16 px-6 md:px-10 pb-8 border-b border-white/10 max-w-5xl mx-auto">
-        <h1 className="font-black text-3xl uppercase tracking-tighter text-text leading-none mb-2">{user?.farmName || "Fazenda"}</h1>
+        <h1 className="font-black text-3xl uppercase tracking-tighter text-text leading-none mb-2">{displayFarmName || "Fazenda"}</h1>
         <div className="flex flex-wrap gap-4 mb-5">
-          {user?.location && <p className="text-[10px] font-bold uppercase tracking-widest text-accent flex items-center gap-1.5"><MapPin size={11} />{user.location}</p>}
+          {displayLocation && <p className="text-[10px] font-bold uppercase tracking-widest text-accent flex items-center gap-1.5"><MapPin size={11} />{displayLocation}</p>}
           {totalArea > 0 && <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 flex items-center gap-1.5"><MapIcon size={10} />~{totalArea.toLocaleString("pt-BR")} ha <span className="text-white/25 text-[8px] normal-case tracking-normal font-normal">(est.)</span></p>}
         </div>
-        <p className="text-sm text-white/55 leading-relaxed mb-6">{user?.description || "Rural producer committed to sustainable and traceable practices."}</p>
+        <p className="text-sm text-white/55 leading-relaxed mb-6">{displayDescription || "Rural producer committed to sustainable and traceable practices."}</p>
 
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           {[
-            { value: lots.length,                           label: "Lots / Lotes" },
+            { value: displayLots.length,                    label: "Lots / Lotes" },
             { value: totalArea > 0 ? `~${totalArea.toLocaleString("pt-BR")} ha` : "—", label: "Total Area (est.)" },
-            { value: (user?.certs?.length ?? 0) + 1,       label: "Certifications" },
+            { value: displayCerts.length + 1,               label: "Certifications" },
           ].map((s, i) => (
             <div key={i} className={`border rounded-2xl p-3 text-center ${i === 2 ? "border-accent/25 bg-accent/5" : "border-white/10 bg-white/[0.02]"}`}>
               <div className={`text-xl font-black ${i === 2 ? "text-accent" : "text-text"}`}>{s.value}</div>
@@ -3542,7 +3589,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         {/* Certifications */}
         <div className="flex gap-2 flex-wrap">
           <span className="px-3 py-1.5 border border-accent text-accent text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5 rounded-full"><ShieldCheck size={11} />EUDR Compliant</span>
-          {user?.certs?.map((c, i) => (
+          {displayCerts.map((c, i) => (
             <span key={i} className="px-3 py-1.5 border border-white/20 text-white/60 text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5 rounded-full"><CheckCircle2 size={11} />{c}</span>
           ))}
         </div>
@@ -3608,12 +3655,12 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
       <div className="px-6 md:px-10 py-6 max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <p className="text-[9px] font-bold uppercase tracking-widest text-text/40">Activity Timeline / Histórico</p>
-          {events.length > 0 && (
-            <span className="text-[8px] font-bold uppercase tracking-widest text-accent border border-accent/30 px-2 py-0.5 rounded-full">{events.length} event{events.length !== 1 ? "s" : ""}</span>
+          {displayEvents.length > 0 && (
+            <span className="text-[8px] font-bold uppercase tracking-widest text-accent border border-accent/30 px-2 py-0.5 rounded-full">{displayEvents.length} event{displayEvents.length !== 1 ? "s" : ""}</span>
           )}
         </div>
 
-        {events.length === 0 && (
+        {displayEvents.length === 0 && (
           <div className="py-10 text-center border border-text/10 rounded-2xl" style={{ background: "color-mix(in srgb, var(--color-text) 3%, transparent)" }}>
             <Tractor size={28} className="text-text/25 mx-auto mb-3" />
             <p className="text-[10px] font-bold uppercase tracking-widest text-text/35">No activity recorded yet</p>
@@ -3621,9 +3668,9 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         )}
 
         <div className="relative">
-          {events.length > 1 && <div className="absolute left-[19px] top-10 bottom-10 w-px bg-text/10" />}
+          {displayEvents.length > 1 && <div className="absolute left-[19px] top-10 bottom-10 w-px bg-text/10" />}
           <div className="space-y-3">
-            {events.map((e, idx) => {
+            {displayEvents.map((e, idx) => {
               const cfg = eventConfig[e.type] ?? eventConfig.update;
               return (
                 <motion.div
