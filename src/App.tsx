@@ -4533,13 +4533,51 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
 const SQRCode = ({ go }: { go: (s: number) => void }) => {
   const { lots, user, addToast } = useContext(AppContext);
   const [selectedId, setSelectedId] = useState(lots[lots.length - 1]?.id || "");
+  const [syncing, setSyncing] = useState(false);
+  const [syncedApiId, setSyncedApiId] = useState<string | null>(null);
   const lot = lots.find(l => l.id === selectedId) || lots[lots.length - 1];
+  const effectiveApiId = lot?.apiId || syncedApiId;
 
   // URL aponta para o próprio app com ?lot=ID
   // Prefere apiId (UUID do backend) — o lot.id local é Date.now() e não funciona em outros dispositivos
   const appBase = window.location.origin + window.location.pathname;
-  const qrValue = lot ? `${appBase}?lot=${lot.apiId || lot.id}` : appBase;
+  const qrValue = lot ? `${appBase}?lot=${effectiveApiId || lot.id}` : appBase;
   const shareTitle = lot ? `${lot.name} — ${user?.farmName}` : user?.farmName || "Fazenda";
+
+  // Reseta sync quando trocar de lote
+  useEffect(() => { setSyncedApiId(null); }, [selectedId]);
+
+  const handleSync = async () => {
+    if (!lot) return;
+    if (!api.token.get()) {
+      addToast("Você precisa estar logado para ativar o QR público. Faça logout e login novamente.", "error");
+      return;
+    }
+    setSyncing(true);
+    try {
+      const created = await api.lots.create({
+        name: lot.name,
+        crop: lot.crop,
+        area: lot.area ? parseFloat(lot.area) : undefined,
+        status: lot.status,
+        notes: lot.notes,
+        geoPolygon: lot.mapPoints?.length ? lot.mapPoints.map(([lat, lng]) => ({ lat, lng })) : undefined,
+      });
+      setSyncedApiId(created.id);
+      // Persiste apiId no localStorage também
+      try {
+        const stored: Lot[] = JSON.parse(localStorage.getItem("rastro_lots") || "[]");
+        const updated = stored.map(l => l.id === lot.id ? { ...l, apiId: created.id } : l);
+        localStorage.setItem("rastro_lots", JSON.stringify(updated));
+      } catch { /* ignore */ }
+      addToast("Lote sincronizado! QR Code atualizado.", "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addToast(`Falha na sincronização: ${msg}`, "error");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   if (lots.length === 0) return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen bg-bg pb-28 md:pb-0 flex flex-col">
@@ -4586,6 +4624,16 @@ const SQRCode = ({ go }: { go: (s: number) => void }) => {
             ))}
           </div>
         </div>
+
+        {!effectiveApiId && (
+          <div className="w-full mb-4 p-4 border border-yellow-500/40 bg-yellow-500/10 text-left rounded-xl">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-400 mb-2">⚠ QR ainda não funciona em outros dispositivos</p>
+            <p className="text-[10px] text-white/70 mb-3 leading-relaxed normal-case tracking-normal">Este lote está só neste navegador. Sincronize agora para que o QR funcione quando escaneado por compradores.</p>
+            <Btn full onClick={handleSync} disabled={syncing}>
+              {syncing ? "Sincronizando..." : "Sincronizar lote agora"}
+            </Btn>
+          </div>
+        )}
 
         <div className="w-full space-y-3">
           <Btn full icon={Share2} onClick={() => doShare(qrValue, shareTitle, addToast)}>Compartilhar link</Btn>
