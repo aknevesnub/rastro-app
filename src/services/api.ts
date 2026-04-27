@@ -136,6 +136,47 @@ export const practices = {
     request<{ ok: boolean }>(`/api/practices/${id}`, { method: "DELETE" }),
 };
 
+// ── Documents (CAR, CCIR, licenças, etc — autodeclaração) ───────────────────
+
+export const documents = {
+  list: () => request<ApiDocument[]>("/api/documents"),
+
+  upload: async (data: {
+    file: File;
+    type: string;
+    name: string;
+    expiresAt?: string | null;
+    notes?: string | null;
+  }): Promise<ApiDocument> => {
+    const fd = new FormData();
+    fd.append("file", data.file);
+    fd.append("type", data.type);
+    fd.append("name", data.name);
+    if (data.expiresAt) fd.append("expiresAt", data.expiresAt);
+    if (data.notes) fd.append("notes", data.notes);
+    const tk = token.get();
+    const res = await fetch(`${BASE}/api/documents`, {
+      method: "POST",
+      headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+      body: fd,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? "Erro no upload");
+    }
+    return res.json();
+  },
+
+  update: (id: string, data: { name?: string; expiresAt?: string | null; notes?: string | null }) =>
+    request<ApiDocument>(`/api/documents/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  remove: (id: string) =>
+    request<{ ok: boolean }>(`/api/documents/${id}`, { method: "DELETE" }),
+};
+
 // ── Photos ────────────────────────────────────────────────────────────────────
 
 export const photos = {
@@ -187,6 +228,20 @@ export interface ApiPractice {
   active: boolean;
   startDate?: string | null;
   photoUrl?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ApiDocument {
+  id: string;
+  userId?: string;
+  type: string;       // "car" | "ccir" | "itr" | "matricula" | "licenca_ambiental" | "outorga_agua" | "projeto_tecnico" | "outro"
+  name: string;
+  url: string;
+  fileSize?: number | null;
+  mimeType?: string | null;
+  expiresAt?: string | null;
   notes?: string | null;
   createdAt?: string;
   updatedAt?: string;

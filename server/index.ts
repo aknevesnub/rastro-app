@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import path from "path";
 
 import { authRouter } from "./routes/auth";
+import { documentsRouter } from "./routes/documents";
 import { farmsRouter } from "./routes/farms";
 import { lotsRouter } from "./routes/lots";
 import { photosRouter } from "./routes/photos";
@@ -66,6 +67,7 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRouter);
+app.use("/api/documents", documentsRouter);
 app.use("/api/farms", farmsRouter);
 app.use("/api/lots", lotsRouter);
 app.use("/api/photos", photosRouter);

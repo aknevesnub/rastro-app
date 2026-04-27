@@ -907,6 +907,160 @@ ${(user as AppUser & { praticasSustentaveis?: string[] }).praticasSustentaveis?.
   downloadHTML(html, `ESG_${esc(user.farmName)}_${new Date().toISOString().slice(0,10)}.html`);
 };
 
+const DOC_TYPE_LABELS: Record<string, string> = {
+  car: "CAR — Cadastro Ambiental Rural",
+  ccir: "CCIR — Certificado de Cadastro de Imóvel Rural",
+  itr: "ITR — Imposto Territorial Rural",
+  matricula: "Matrícula do imóvel",
+  licenca_ambiental: "Licença ambiental",
+  outorga_agua: "Outorga de uso da água",
+  projeto_tecnico: "Projeto técnico",
+  outro: "Outro",
+};
+
+const openDossie = (
+  user: AppUser,
+  lots: Lot[],
+  practices: api.ApiPractice[],
+  documents: api.ApiDocument[]
+) => {
+  const totalArea = lots.reduce((a, l) => a + (Number(l.area) || 0), 0);
+  const eudrCount = lots.filter(l => (l as Lot & { eudrCompliant?: boolean }).eudrCompliant).length;
+  const activePractices = practices.filter(p => p.active);
+  const today = new Date();
+  const expiringSoon = documents.filter(d => {
+    if (!d.expiresAt) return false;
+    const exp = new Date(d.expiresAt);
+    const days = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+    return days >= 0 && days <= 60;
+  });
+  const expired = documents.filter(d => {
+    if (!d.expiresAt) return false;
+    return new Date(d.expiresAt).getTime() < today.getTime();
+  });
+
+  // Agrupa práticas por categoria
+  const practicesByCat: Record<string, api.ApiPractice[]> = {};
+  for (const p of activePractices) {
+    if (!practicesByCat[p.category]) practicesByCat[p.category] = [];
+    practicesByCat[p.category].push(p);
+  }
+  const catLabels: Record<string, string> = {
+    solo: "Manejo do solo",
+    biodiversidade: "Biodiversidade",
+    pecuaria: "Pecuária",
+    agua: "Recursos hídricos",
+    insumos: "Insumos",
+    residuos: "Resíduos",
+  };
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Dossiê — ${esc(user.farmName)}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:820px;margin:0 auto;padding:40px;color:#111}
+.badge{display:inline-block;background:#166534;color:#fff;padding:4px 12px;font-size:10px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px}
+h1{font-size:28px;font-weight:900;text-transform:uppercase;letter-spacing:-1px;margin-bottom:6px}
+.sub{color:#555;font-size:13px;margin-bottom:24px}
+h2{font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin:28px 0 12px;color:#555;border-bottom:1px solid #eee;padding-bottom:8px}
+h3{font-size:13px;font-weight:bold;margin:16px 0 8px;color:#222}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin:14px 0}
+.card{border:1px solid #ddd;padding:14px}
+.cl{font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:5px}
+.cv{font-size:17px;font-weight:bold}
+table{width:100%;border-collapse:collapse;margin:14px 0}
+th{background:#000;color:#fff;padding:10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px}
+td{padding:10px;border-bottom:1px solid #eee;font-size:13px;vertical-align:top}
+.warn{background:#fff8e1;border:1px solid #f59e0b;padding:14px;margin:14px 0;font-size:12px;line-height:1.7;color:#7c4d00}
+.alert{background:#fef2f2;border:1px solid #b91c1c;padding:14px;margin:14px 0;font-size:12px;line-height:1.7;color:#7f1d1d}
+.ok{color:#166534;font-weight:bold}
+.muted{color:#777;font-size:12px}
+.tag{display:inline-block;background:#f4f4f4;border:1px solid #ddd;padding:3px 8px;font-size:11px;border-radius:4px;margin:2px}
+.decl{font-size:13px;line-height:1.8;border-left:3px solid #166534;padding-left:14px;margin:14px 0;background:#f0fdf4;padding:16px}
+.footer{margin-top:36px;padding-top:14px;border-top:1px solid #ddd;font-size:11px;color:#999}
+.btn{display:inline-block;margin-top:20px;padding:12px 24px;background:#166534;color:#fff;border:none;cursor:pointer;font-weight:bold;font-size:12px;text-transform:uppercase;letter-spacing:1px}
+@media print{.no-print{display:none}body{padding:20px}}
+</style></head><body>
+<div class="badge">Quem Produz — Dossiê de Boas Práticas</div>
+<h1>${esc(user.farmName)}</h1>
+<p class="sub">Produtor: ${esc(user.name || "—")} | Emitido em: ${today.toLocaleDateString("pt-BR", { year: "numeric", month: "long", day: "numeric" })}</p>
+
+<div class="warn">
+<strong>⚠ Autodeclaração:</strong> Este dossiê reúne <strong>informações declaradas pelo produtor</strong> sobre práticas adotadas e documentos disponíveis. Não substitui auditoria, certificação por terceiros ou análise de crédito. Serve como vitrine de transparência e organização da fazenda. As informações são de responsabilidade exclusiva do produtor rural.
+</div>
+
+<h2>Visão Geral</h2>
+<div class="grid4">
+<div class="card"><div class="cl">Área estimada</div><div class="cv">~${totalArea} ha</div></div>
+<div class="card"><div class="cl">Lotes</div><div class="cv">${lots.length}</div></div>
+<div class="card"><div class="cl">Práticas</div><div class="cv">${activePractices.length}</div></div>
+<div class="card"><div class="cl">Documentos</div><div class="cv">${documents.length}</div></div>
+</div>
+
+${expired.length > 0 ? `<div class="alert"><strong>⚠ ${expired.length} documento(s) vencido(s):</strong> ${expired.map(d => esc(d.name)).join(", ")}</div>` : ""}
+${expiringSoon.length > 0 ? `<div class="warn"><strong>⏰ ${expiringSoon.length} documento(s) vencendo em até 60 dias:</strong> ${expiringSoon.map(d => `${esc(d.name)} (${new Date(d.expiresAt!).toLocaleDateString("pt-BR")})`).join(", ")}</div>` : ""}
+
+<h2>Identificação</h2>
+<div class="grid">
+<div class="card"><div class="cl">Localização</div><div class="cv" style="font-size:13px">${esc(user.location || "—")}</div></div>
+<div class="card"><div class="cl">E-mail</div><div class="cv" style="font-size:13px">${esc(user.email)}</div></div>
+<div class="card"><div class="cl">Telefone</div><div class="cv" style="font-size:13px">${esc(user.phone || "—")}</div></div>
+<div class="card"><div class="cl">Lotes em conformidade EUDR</div><div class="cv">${eudrCount} / ${lots.length}</div></div>
+</div>
+
+<h2>Boas Práticas Declaradas (${activePractices.length})</h2>
+${activePractices.length === 0 ? `<p class="muted">Nenhuma prática declarada ainda.</p>` :
+Object.keys(practicesByCat).map(cat => `
+<h3>${esc(catLabels[cat] || cat)}</h3>
+<table><thead><tr><th style="width:30%">Prática</th><th style="width:20%">Desde</th><th>Observação</th></tr></thead><tbody>
+${practicesByCat[cat].map(p => `<tr>
+<td><strong>${esc(p.name)}</strong></td>
+<td>${p.startDate ? new Date(p.startDate).toLocaleDateString("pt-BR") : "—"}</td>
+<td>${esc(p.notes || "—")}</td>
+</tr>`).join("")}
+</tbody></table>
+`).join("")
+}
+
+<h2>Lotes (${lots.length})</h2>
+${lots.length === 0 ? `<p class="muted">Nenhum lote cadastrado.</p>` : `
+<table><thead><tr><th>Lote</th><th>Cultura</th><th>Área (ha)</th><th>Plantio</th><th>EUDR</th></tr></thead><tbody>
+${lots.map(l => `<tr>
+<td><strong>${esc(l.name)}</strong></td>
+<td>${esc(l.crop)}</td>
+<td>~${esc(l.area)}</td>
+<td>${l.date ? new Date(l.date + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</td>
+<td>${(l as Lot & { eudrCompliant?: boolean }).eudrCompliant ? '<span class="ok">✓ Sim</span>' : '<span class="muted">—</span>'}</td>
+</tr>`).join("")}
+</tbody></table>`}
+
+<h2>Documentos da Propriedade (${documents.length})</h2>
+${documents.length === 0 ? `<p class="muted">Nenhum documento anexado.</p>` : `
+<table><thead><tr><th>Tipo</th><th>Nome / Identificador</th><th>Validade</th><th>Observação</th></tr></thead><tbody>
+${documents.map(d => {
+  let validity = "—";
+  if (d.expiresAt) {
+    const exp = new Date(d.expiresAt);
+    const dStr = exp.toLocaleDateString("pt-BR");
+    if (exp.getTime() < today.getTime()) validity = `<span style="color:#b91c1c;font-weight:bold">${dStr} (vencido)</span>`;
+    else validity = dStr;
+  }
+  return `<tr>
+<td><strong>${esc(DOC_TYPE_LABELS[d.type] || d.type)}</strong></td>
+<td>${esc(d.name)}</td>
+<td>${validity}</td>
+<td>${esc(d.notes || "—")}</td>
+</tr>`;
+}).join("")}
+</tbody></table>`}
+
+<h2>Declaração do Produtor</h2>
+<p class="decl">Eu, <strong>${esc(user.name || user.farmName)}</strong>, declaro, sob minha responsabilidade, que as informações registradas neste dossiê são verídicas e refletem o que é praticado na fazenda. Esta é uma <strong>autodeclaração</strong> de boas práticas e organização documental, e não constitui certificação oficial, auditoria por terceiros ou aprovação de crédito. As informações aqui contidas são de minha exclusiva responsabilidade.</p>
+
+<div class="footer">Gerado por Quem Produz | ${today.toLocaleString("pt-BR")} | Autodeclaração do produtor — não constitui certificação oficial. Área calculada a partir de registros digitais com margem de erro estimada de 1–3 ha.</div>
+<div class="no-print"><button class="btn" onclick="window.print()">Imprimir / Salvar PDF</button></div>
+</body></html>`;
+  downloadHTML(html, `Dossie_${esc(user.farmName)}_${today.toISOString().slice(0, 10)}.html`);
+};
+
 // ─────────────────────────────────────────────
 // UI Primitives
 // ─────────────────────────────────────────────
@@ -4968,8 +5122,9 @@ const PRACTICE_CATALOG: { id: string; label: string; emoji: string; items: { key
 ];
 
 const SPraticas = ({ go }: { go: (s: number) => void }) => {
-  const { addToast } = useContext(AppContext);
+  const { user, lots, addToast } = useContext(AppContext);
   const [practices, setPractices] = useState<api.ApiPractice[]>([]);
+  const [documents, setDocuments] = useState<api.ApiDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);     // key being edited
   const [draft, setDraft] = useState<{ active: boolean; startDate: string; notes: string; photoUrl: string }>(
@@ -4977,13 +5132,23 @@ const SPraticas = ({ go }: { go: (s: number) => void }) => {
   );
   const [saving, setSaving] = useState(false);
 
+  // Documentos
+  const [docModal, setDocModal] = useState<{ type: string; label: string } | null>(null);
+  const [docDraft, setDocDraft] = useState<{ name: string; expiresAt: string; notes: string; file: File | null }>(
+    { name: "", expiresAt: "", notes: "", file: null }
+  );
+  const [docSaving, setDocSaving] = useState(false);
+
   const apiOn = API_ENABLED && !!api.token.get();
 
   useEffect(() => {
     if (!apiOn) { setLoading(false); return; }
-    api.practices.list()
-      .then(setPractices)
-      .catch(() => addToast("Não foi possível carregar suas práticas", "error"))
+    Promise.all([
+      api.practices.list().catch(() => [] as api.ApiPractice[]),
+      api.documents.list().catch(() => [] as api.ApiDocument[]),
+    ])
+      .then(([ps, ds]) => { setPractices(ps); setDocuments(ds); })
+      .catch(() => addToast("Não foi possível carregar seus dados", "error"))
       .finally(() => setLoading(false));
   }, [apiOn]);
 
@@ -5064,19 +5229,81 @@ const SPraticas = ({ go }: { go: (s: number) => void }) => {
     }
   };
 
+  const openDocModal = (type: string, label: string) => {
+    setDocDraft({ name: "", expiresAt: "", notes: "", file: null });
+    setDocModal({ type, label });
+  };
+  const closeDocModal = () => setDocModal(null);
+
+  const saveDocument = async () => {
+    if (!apiOn) { addToast("Faça login pra anexar documentos", "info"); return; }
+    if (!docModal) return;
+    if (!docDraft.file) { addToast("Selecione um arquivo (PDF, JPEG ou PNG)", "error"); return; }
+    if (!docDraft.name.trim()) { addToast("Informe um nome / identificador", "error"); return; }
+    setDocSaving(true);
+    try {
+      const created = await api.documents.upload({
+        file: docDraft.file,
+        type: docModal.type,
+        name: docDraft.name.trim(),
+        expiresAt: docDraft.expiresAt || null,
+        notes: docDraft.notes || null,
+      });
+      setDocuments(prev => [created, ...prev]);
+      addToast("Documento anexado!", "success");
+      closeDocModal();
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : "Erro no upload", "error");
+    } finally {
+      setDocSaving(false);
+    }
+  };
+
+  const removeDocument = async (id: string) => {
+    if (!apiOn) return;
+    try {
+      await api.documents.remove(id);
+      setDocuments(prev => prev.filter(d => d.id !== id));
+      addToast("Documento removido", "info");
+    } catch {
+      addToast("Erro ao remover documento", "error");
+    }
+  };
+
+  const handleGenerateDossie = () => {
+    if (!user) return;
+    openDossie(user, lots, practices, documents);
+    addToast("Dossiê gerado — abra o HTML e use Ctrl+P pra salvar como PDF", "success");
+  };
+
+  const docsByType = useMemo(() => {
+    const m: Record<string, api.ApiDocument[]> = {};
+    for (const d of documents) {
+      (m[d.type] ||= []).push(d);
+    }
+    return m;
+  }, [documents]);
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-32 md:pb-10">
       <TopBar title="Minha Fazenda em Prática" onBack={() => go(3)} right={<ThemeToggle />} />
 
       <div className="px-5 md:px-8 max-w-5xl mx-auto">
         {/* Aviso de autodeclaração */}
-        <div className="mb-6 p-4 border border-yellow-500/30 bg-yellow-500/5 rounded-2xl flex items-start gap-3">
+        <div className="mb-4 p-4 border border-yellow-500/30 bg-yellow-500/5 rounded-2xl flex items-start gap-3">
           <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
           <div className="text-[11px] text-white/70 leading-relaxed">
             <span className="font-bold text-yellow-400 uppercase tracking-widest text-[9px] block mb-1">Autodeclaração</span>
             Você organiza aqui o que já faz na fazenda. As informações são <b>declaradas pelo produtor</b> e não substituem auditoria, certificação ou análise de crédito. Servem como vitrine de transparência pra compradores, bancos e parceiros.
           </div>
         </div>
+
+        {/* Botão de Dossiê */}
+        <button onClick={handleGenerateDossie}
+          className="w-full mb-6 py-3 px-4 bg-accent text-bg rounded-2xl flex items-center justify-center gap-2 font-black text-[11px] uppercase tracking-widest hover:opacity-90 transition-opacity">
+          <FileText size={14} />
+          Gerar Dossiê PDF (práticas + documentos + lotes)
+        </button>
 
         {/* Resumo */}
         <div className="grid grid-cols-3 gap-3 mb-6">
@@ -5153,6 +5380,71 @@ const SPraticas = ({ go }: { go: (s: number) => void }) => {
             </div>
           </div>
         ))}
+
+        {/* Documentos da Propriedade */}
+        {!loading && (
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">📁</span>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-accent">Documentos da Propriedade</h3>
+              <span className="text-[9px] font-bold text-white/30">
+                {documents.length} {documents.length === 1 ? "anexado" : "anexados"}
+              </span>
+            </div>
+            <p className="text-[10px] text-white/40 mb-3">
+              Anexe PDFs ou fotos de CAR, CCIR, ITR, licenças e outros documentos. Apenas você vê esses arquivos — eles entram no seu dossiê PDF.
+            </p>
+
+            <div className="space-y-2">
+              {Object.entries(DOC_TYPE_LABELS).map(([typeId, label]) => {
+                const docsOfType = docsByType[typeId] || [];
+                return (
+                  <div key={typeId} className="border border-white/8 bg-white/[0.02] rounded-2xl p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold uppercase tracking-wide text-text">{label}</div>
+                        {docsOfType.length === 0 && (
+                          <p className="text-[10px] text-white/30 mt-1">Nenhum arquivo anexado</p>
+                        )}
+                      </div>
+                      <button onClick={() => openDocModal(typeId, label)}
+                        className="text-[8px] font-black uppercase tracking-widest text-accent hover:text-accent/70 transition-colors shrink-0">
+                        + Anexar
+                      </button>
+                    </div>
+                    {docsOfType.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        {docsOfType.map(d => {
+                          const expDate = d.expiresAt ? new Date(d.expiresAt) : null;
+                          const isExpired = expDate && expDate.getTime() < Date.now();
+                          const expSoon = expDate && !isExpired && (expDate.getTime() - Date.now()) / 86400000 <= 60;
+                          return (
+                            <div key={d.id} className="flex items-center gap-2 p-2 bg-white/[0.02] border border-white/8 rounded-lg">
+                              <FileText size={12} className="text-white/40 shrink-0" />
+                              <a href={d.url} target="_blank" rel="noopener noreferrer"
+                                className="text-[11px] text-text hover:text-accent flex-1 min-w-0 truncate">
+                                {d.name}
+                              </a>
+                              {expDate && (
+                                <span className={`text-[9px] font-bold uppercase tracking-widest shrink-0 ${isExpired ? "text-red-400" : expSoon ? "text-yellow-400" : "text-white/40"}`}>
+                                  {isExpired ? "Vencido" : expSoon ? "Vence em breve" : expDate.toLocaleDateString("pt-BR")}
+                                </span>
+                              )}
+                              <button onClick={() => removeDocument(d.id)}
+                                className="text-white/30 hover:text-red-400 shrink-0" aria-label="Remover">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Editor modal */}
@@ -5234,6 +5526,87 @@ const SPraticas = ({ go }: { go: (s: number) => void }) => {
           document.body
         );
       })()}
+
+      {/* Document upload modal */}
+      {docModal && createPortal(
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={closeDocModal}>
+          <div onClick={e => e.stopPropagation()}
+            className="w-full max-w-md bg-bg border border-white/15 rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
+            style={{ fontFamily: "var(--font-sans)" }}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-1">Anexar documento</p>
+                <h3 className="text-base font-black text-text uppercase tracking-tight">{docModal.label}</h3>
+              </div>
+              <button onClick={closeDocModal} className="text-white/40 hover:text-text"><X size={18} /></button>
+            </div>
+
+            <p className="text-[11px] text-white/55 leading-relaxed mb-5">
+              Aceita PDF, JPEG ou PNG (máx 10 MB). O arquivo fica privado — só aparece no seu dossiê.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1">Arquivo *</label>
+              {docDraft.file ? (
+                <div className="flex items-center gap-2 p-3 bg-white/5 border border-white/15 rounded-xl">
+                  <FileText size={14} className="text-accent" />
+                  <span className="text-[11px] text-text flex-1 truncate">{docDraft.file.name}</span>
+                  <button onClick={() => setDocDraft(d => ({ ...d, file: null }))}
+                    className="text-white/40 hover:text-red-400"><X size={14} /></button>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-2 w-full py-6 border border-dashed border-white/20 rounded-xl text-white/40 cursor-pointer hover:border-accent/40 hover:text-accent transition-colors">
+                  <FileText size={16} />
+                  <span className="text-[11px] font-bold uppercase tracking-widest">Selecionar arquivo</span>
+                  <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      if (f.size > 10 * 1024 * 1024) { addToast("Arquivo passa de 10 MB", "error"); return; }
+                      setDocDraft(d => ({ ...d, file: f, name: d.name || f.name.replace(/\.[^.]+$/, "") }));
+                    }} />
+                </label>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1">Nome / identificador *</label>
+              <input type="text" value={docDraft.name} maxLength={160}
+                onChange={e => setDocDraft(d => ({ ...d, name: e.target.value }))}
+                placeholder="Ex: CAR Fazenda Boa Vista"
+                className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-[11px] text-text placeholder:text-white/25 outline-none focus:border-accent/50" />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1">Validade (opcional)</label>
+              <input type="date" value={docDraft.expiresAt}
+                onChange={e => setDocDraft(d => ({ ...d, expiresAt: e.target.value }))}
+                className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-[11px] text-text outline-none focus:border-accent/50" />
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1">Observação (opcional)</label>
+              <textarea rows={2} value={docDraft.notes} maxLength={1000}
+                onChange={e => setDocDraft(d => ({ ...d, notes: e.target.value }))}
+                placeholder="Ex: protocolo nº ..."
+                className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-[11px] text-text placeholder:text-white/25 outline-none focus:border-accent/50 resize-none" />
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={closeDocModal}
+                className="flex-1 py-3 border border-white/15 text-white/60 text-[10px] font-black uppercase tracking-widest rounded-xl hover:border-white/30">
+                Cancelar
+              </button>
+              <button onClick={saveDocument} disabled={docSaving}
+                className="flex-1 py-3 bg-accent text-bg text-[10px] font-black uppercase tracking-widest rounded-xl disabled:opacity-50">
+                {docSaving ? "Enviando..." : "Anexar"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </motion.div>
   );
 };

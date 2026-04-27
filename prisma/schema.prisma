@@ -26,6 +26,7 @@ model User {
   isPublic        Boolean        @default(true) @map("is_public")
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+  documents       UserDocument[]
   events          Event[]
   lots            Lot[]
   practices       UserPractice[]
@@ -124,6 +125,27 @@ model UserCert {
 
   @@index([userId])
   @@map("user_certs")
+}
+
+// Documentos da fazenda anexados pelo produtor (CAR, CCIR, ITR, etc.).
+// Apenas o produtor logado consegue ler e gerenciar os próprios documentos.
+model UserDocument {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  type      String    // car, ccir, itr, matricula, licenca_ambiental, outorga_agua, projeto_tecnico, outro
+  name      String    // rótulo amigável do documento
+  url       String    // URL do arquivo no storage
+  fileSize  Int?      @map("file_size")
+  mimeType  String?   @map("mime_type")
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  notes     String?
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([type])
+  @@map("user_documents")
 }
 
 // Práticas sustentáveis declaradas pelo produtor (autodeclaração).
