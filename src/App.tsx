@@ -293,6 +293,7 @@ interface AppUser {
   inventarioGHG?: boolean; // Inventário de emissões de GHG realizado
   // Subscription
   plan?: PlanTier;
+  trialEndsAt?: string;   // ISO date — quando o trial de 30 dias termina (ativado ao escolher plano pago durante lançamento)
   // Visibilidade pública
   isPublic?: boolean; // default true — aparecer no mapa e vitrine da landing
   // Sede da fazenda
@@ -362,14 +363,26 @@ const PLANS: Record<PlanTier, PlanConfig> = {
 };
 
 // Hook — the single source of truth for plan checks in any component
+// Considera "trial expirado" → rebaixa pra free automaticamente (sem cartão = sem cobrança)
 const usePlan = () => {
   const { user } = useContext(AppContext);
-  const tier: PlanTier = (user?.plan ?? "free");
+  const storedTier: PlanTier = (user?.plan ?? "free");
+
+  // Trial info
+  const now = Date.now();
+  const trialEnd = user?.trialEndsAt ? new Date(user.trialEndsAt).getTime() : null;
+  const onTrial = storedTier !== "free" && trialEnd !== null && trialEnd > now;
+  const trialExpired = storedTier !== "free" && trialEnd !== null && trialEnd <= now;
+  const trialDaysLeft = trialEnd && trialEnd > now ? Math.ceil((trialEnd - now) / 86400000) : 0;
+
+  // Tier efetivo: rebaixa pra free se trial expirou
+  const tier: PlanTier = trialExpired ? "free" : storedTier;
   const plan = PLANS[tier];
   const can = (f: keyof PlanFeatures): boolean => plan.features[f];
   const canAddLot = (currentCount: number): boolean =>
     plan.limits.lots === -1 || currentCount < plan.limits.lots;
-  return { tier, plan, can, canAddLot };
+
+  return { tier, plan, can, canAddLot, onTrial, trialExpired, trialDaysLeft, trialEndsAt: user?.trialEndsAt };
 };
 
 // ─────────────────────────────────────────────
@@ -3322,6 +3335,110 @@ const SLogin = ({ go }: { go: (s: number) => void }) => {
   );
 };
 
+// Pílula compacta de trial — mostrar próxima ao logo/notif
+const TrialPill = ({ go }: { go: (s: number) => void }) => {
+  const { onTrial, trialExpired, trialDaysLeft } = usePlan();
+  if (!onTrial && !trialExpired) return null;
+
+  if (trialExpired) {
+    return (
+      <button onClick={() => go(15)}
+        className="px-2.5 py-1 bg-red-500/10 border border-red-500/30 rounded-full text-[9px] font-black uppercase tracking-widest text-red-400 hover:bg-red-500/20 transition-colors">
+        Trial expirou
+      </button>
+    );
+  }
+  const urgent = trialDaysLeft <= 5;
+  return (
+    <button onClick={() => go(15)}
+      className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-colors ${
+        urgent
+          ? "bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20"
+          : "bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20"
+      }`}>
+      {trialDaysLeft} {trialDaysLeft === 1 ? "dia" : "dias"} grátis
+    </button>
+  );
+};
+
+// Banner inteligente que muda de mensagem conforme estado do plano
+const PlanStatusBanner = ({ go }: { go: (s: number) => void }) => {
+  const { tier, onTrial, trialExpired, trialDaysLeft } = usePlan();
+
+  // Trial expirou → vermelho, força upgrade
+  if (trialExpired) {
+    return (
+      <div onClick={() => go(15)}
+        className="mx-5 mt-4 mb-0 md:mx-8 p-3.5 bg-red-500/5 border border-red-500/30 rounded-2xl flex items-center gap-3 cursor-pointer hover:border-red-500/50 transition-all group">
+        <div className="w-8 h-8 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-center shrink-0">
+          <AlertTriangle size={14} className="text-red-400" strokeWidth={1.5} />
+        </div>
+        <div className="flex-1">
+          <p className="text-[9px] font-black uppercase tracking-widest text-red-400">Período de teste expirado</p>
+          <p className="text-[10px] text-white/50">Você voltou ao plano gratuito. Toque pra escolher um plano e continuar com tudo.</p>
+        </div>
+        <ChevronRight size={14} className="text-red-400/60 group-hover:text-red-400 transition-colors shrink-0" />
+      </div>
+    );
+  }
+
+  // Trial ativo terminando em até 5 dias → amarelo de urgência
+  if (onTrial && trialDaysLeft <= 5) {
+    return (
+      <div onClick={() => go(15)}
+        className="mx-5 mt-4 mb-0 md:mx-8 p-3.5 bg-yellow-500/5 border border-yellow-500/30 rounded-2xl flex items-center gap-3 cursor-pointer hover:border-yellow-500/50 transition-all group">
+        <div className="w-8 h-8 bg-yellow-500/10 border border-yellow-500/30 rounded-xl flex items-center justify-center shrink-0">
+          <AlertTriangle size={14} className="text-yellow-400" strokeWidth={1.5} />
+        </div>
+        <div className="flex-1">
+          <p className="text-[9px] font-black uppercase tracking-widest text-yellow-400">
+            Seu trial termina em {trialDaysLeft} {trialDaysLeft === 1 ? "dia" : "dias"}
+          </p>
+          <p className="text-[10px] text-white/50">Quando o pagamento estiver disponível, você vai poder continuar com o plano.</p>
+        </div>
+        <ChevronRight size={14} className="text-yellow-400/60 group-hover:text-yellow-400 transition-colors shrink-0" />
+      </div>
+    );
+  }
+
+  // Trial ativo confortável → verde, contador
+  if (onTrial) {
+    return (
+      <div onClick={() => go(15)}
+        className="mx-5 mt-4 mb-0 md:mx-8 p-3.5 bg-accent/5 border border-accent/20 rounded-2xl flex items-center gap-3 cursor-pointer hover:border-accent/50 transition-all group">
+        <div className="w-8 h-8 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center shrink-0">
+          <TrendingUp size={14} className="text-accent" strokeWidth={1.5} />
+        </div>
+        <div className="flex-1">
+          <p className="text-[9px] font-black uppercase tracking-widest text-accent">
+            Trial ativo — {trialDaysLeft} {trialDaysLeft === 1 ? "dia restante" : "dias restantes"}
+          </p>
+          <p className="text-[10px] text-white/50">Acesso completo aos recursos pagos durante o período de lançamento.</p>
+        </div>
+        <ChevronRight size={14} className="text-accent/50 group-hover:text-accent transition-colors shrink-0" />
+      </div>
+    );
+  }
+
+  // Plano free padrão
+  if (tier === "free") {
+    return (
+      <div onClick={() => go(15)} className="mx-5 mt-4 mb-0 md:mx-8 p-3.5 bg-accent/5 border border-accent/20 rounded-2xl flex items-center gap-3 cursor-pointer hover:border-accent/50 transition-all group">
+        <div className="w-8 h-8 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center shrink-0">
+          <TrendingUp size={14} className="text-accent" strokeWidth={1.5} />
+        </div>
+        <div className="flex-1">
+          <p className="text-[9px] font-black uppercase tracking-widest text-accent">Plano Gratuito</p>
+          <p className="text-[10px] text-white/50">Comece 30 dias grátis e desbloqueie relatórios, QR rastreável e lotes ilimitados.</p>
+        </div>
+        <ChevronRight size={14} className="text-accent/50 group-hover:text-accent transition-colors shrink-0" />
+      </div>
+    );
+  }
+
+  return null;
+};
+
 const SDashboard = ({ go }: { go: (s: number) => void }) => {
   const { user, lots, events, proposals, logout, updateProposalStatus, addToast } = useContext(AppContext);
   const { tier } = usePlan();
@@ -3333,7 +3450,8 @@ const SDashboard = ({ go }: { go: (s: number) => void }) => {
       {/* Header — só visível no mobile (desktop tem sidebar) */}
       <div className="md:hidden bg-bg px-5 py-4 flex justify-between items-center sticky top-0 z-40 border-b border-white/10">
         <Logo />
-        <div className="flex items-center gap-4 text-text">
+        <div className="flex items-center gap-3 text-text">
+          <TrialPill go={go} />
           <div className="relative cursor-pointer hover:text-accent transition-colors" onClick={() => setShowNotifs(p => !p)}>
             <Bell size={20} />
             {events.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />}
@@ -3344,9 +3462,12 @@ const SDashboard = ({ go }: { go: (s: number) => void }) => {
       {/* Header desktop — título da página */}
       <div className="hidden md:flex bg-bg px-8 py-5 items-center justify-between border-b border-white/10 sticky top-0 z-40">
         <h1 className="text-lg font-extrabold uppercase tracking-tight text-text">Início</h1>
-        <div className="relative cursor-pointer hover:text-accent transition-colors text-text" onClick={() => setShowNotifs(p => !p)}>
-          <Bell size={20} />
-          {events.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />}
+        <div className="flex items-center gap-4">
+          <TrialPill go={go} />
+          <div className="relative cursor-pointer hover:text-accent transition-colors text-text" onClick={() => setShowNotifs(p => !p)}>
+            <Bell size={20} />
+            {events.length > 0 && <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />}
+          </div>
         </div>
       </div>
 
@@ -3369,19 +3490,8 @@ const SDashboard = ({ go }: { go: (s: number) => void }) => {
         )}
       </AnimatePresence>
 
-      {/* Free plan upgrade banner */}
-      {tier === "free" && (
-        <div onClick={() => go(15)} className="mx-5 mt-4 mb-0 md:mx-8 p-3.5 bg-accent/5 border border-accent/20 rounded-2xl flex items-center gap-3 cursor-pointer hover:border-accent/50 transition-all group">
-          <div className="w-8 h-8 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center shrink-0">
-            <TrendingUp size={14} className="text-accent" strokeWidth={1.5} />
-          </div>
-          <div className="flex-1">
-            <p className="text-[9px] font-black uppercase tracking-widest text-accent">Plano Gratuito</p>
-            <p className="text-[10px] text-white/50">Desbloqueie relatórios, QR rastreável e lotes ilimitados</p>
-          </div>
-          <ChevronRight size={14} className="text-accent/50 group-hover:text-accent transition-colors shrink-0" />
-        </div>
-      )}
+      {/* Banner inteligente — varia por estado: free / trial ativo / trial expirado */}
+      <PlanStatusBanner go={go} />
 
       <div className="p-5 md:p-8 max-w-5xl mx-auto">
         {(() => {
@@ -5624,7 +5734,7 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
   const handleSelect = async (planId: PlanTier) => {
     if (planId === tier) return;
     if (planId === "free") {
-      saveUser({ ...user!, plan: "free" });
+      saveUser({ ...user!, plan: "free", trialEndsAt: undefined });
       addToast("Plano alterado para Gratuito");
       go(3);
       return;
@@ -5640,7 +5750,8 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
       });
       if (url.startsWith("#")) {
         // Período de lançamento — trial gratuito de 30 dias
-        saveUser({ ...user!, plan: planId });
+        const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        saveUser({ ...user!, plan: planId, trialEndsAt });
         addToast(`Plano ${PLANS[planId].name} ativado — 30 dias grátis!`, "success");
         go(3);
       } else {
