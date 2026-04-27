@@ -1317,6 +1317,11 @@ const FarmPinDrawer = ({ initialPin, onSave, onClose }: {
   const [pin, setPin] = useState<[number, number] | null>(initialPin || null);
   const [locating, setLocating] = useState(false);
   const [locFound, setLocFound] = useState(false);
+  // Busca por município/estado/endereço (Nominatim/OpenStreetMap)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string; type?: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1374,10 +1379,49 @@ const FarmPinDrawer = ({ initialPin, onSave, onClose }: {
     map.once("locationerror", () => { setLocating(false); setLocFound(false); });
   };
 
+  // Busca de localização via Nominatim (OSM) — município, estado, endereço
+  const handleSearch = async (q: string) => {
+    const trimmed = q.trim();
+    if (trimmed.length < 3) { setSearchResults([]); return; }
+    searchAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
+    setSearching(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=br&accept-language=pt-BR&q=${encodeURIComponent(trimmed)}`;
+      const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error("erro busca");
+      const data = await res.json() as { display_name: string; lat: string; lon: string; type?: string }[];
+      setSearchResults(data);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSelectResult = (r: { lat: string; lon: string }) => {
+    const lat = parseFloat(r.lat);
+    const lng = parseFloat(r.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && mapRef.current) {
+      mapRef.current.setView([lat, lng], 13);
+    }
+    setSearchResults([]);
+    setSearchQuery("");
+  };
+
+  // Debounce da busca
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); return; }
+    const t = setTimeout(() => { handleSearch(searchQuery); }, 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   const HEADER_H = 56;
-  const HINT_H   = 36;
+  const SEARCH_H = 44;
+  const HINT_H   = 32;
   const CTRL_H   = 56;
-  const MAP_TOP  = HEADER_H + HINT_H;
+  const MAP_TOP  = HEADER_H + SEARCH_H + HINT_H;
   const MAP_BTM  = CTRL_H;
 
   return createPortal(
@@ -1397,8 +1441,36 @@ const FarmPinDrawer = ({ initialPin, onSave, onClose }: {
         </button>
       </div>
 
+      {/* Busca por município, estado ou endereço (Nominatim/OSM) */}
+      <div style={{ position: "absolute", top: HEADER_H, left: 0, right: 0, height: SEARCH_H, padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "#0A0A0A", zIndex: 11 }}>
+        <div style={{ position: "relative", height: "100%" }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Buscar município, estado ou endereço..."
+            style={{ width: "100%", height: "100%", padding: "0 12px 0 36px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "#F5F5F5", fontFamily: "inherit", fontSize: 12, outline: "none" }}
+          />
+          <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.4)", fontSize: 14 }}>🔍</div>
+          {searching && <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "#E0FF22", fontSize: 10, fontWeight: 700 }}>...</div>}
+          {searchResults.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "#0A0A0A", border: "1px solid rgba(224,255,34,0.3)", borderRadius: 8, maxHeight: 240, overflowY: "auto", zIndex: 100 }}>
+              {searchResults.map((r, i) => (
+                <button key={i} onClick={() => handleSelectResult(r)}
+                  style={{ display: "block", width: "100%", padding: "10px 12px", textAlign: "left", background: "none", border: "none", borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", color: "rgba(255,255,255,0.85)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", lineHeight: 1.4 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(224,255,34,0.08)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "none")}>
+                  <span style={{ display: "block", color: "#E0FF22", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 2 }}>{r.type || "Local"}</span>
+                  {r.display_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Instrução */}
-      <div style={{ position: "absolute", top: HEADER_H, left: 0, right: 0, height: HINT_H, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(224,255,34,0.07)", borderBottom: "1px solid rgba(224,255,34,0.15)" }}>
+      <div style={{ position: "absolute", top: HEADER_H + SEARCH_H, left: 0, right: 0, height: HINT_H, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(224,255,34,0.07)", borderBottom: "1px solid rgba(224,255,34,0.15)" }}>
         <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: "#E0FF22", margin: 0 }}>
           {pin
             ? "🏠 Sede marcada · Toque para mover ou salve"
@@ -1440,6 +1512,11 @@ const MapDrawer = ({ name, initialPoints, onSave, onClose }: {
   const [points, setPoints] = useState<[number, number][]>(initRef.current);
   const [locating, setLocating] = useState(false);
   const [locFound, setLocFound] = useState(false);
+  // Busca por município/estado/endereço (Nominatim/OpenStreetMap)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string; type?: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   // ── Bug 1 fix: inicializa o mapa e registra click SEM chamar setPoints dentro de updater ──
   useEffect(() => {
@@ -1509,14 +1586,52 @@ const MapDrawer = ({ name, initialPoints, onSave, onClose }: {
     map.once("locationerror", () => { setLocating(false); setLocFound(false); });
   };
 
-  // Alturas fixas do header (56px) + instrução (36px) + controles (56px) = 148px
-  // O mapa ocupa o restante: 100vh - 148px. Layout absoluto é mais confiável
-  // do que flex para o Leaflet detectar a altura corretamente no portal.
+  // Busca de localização via Nominatim (OSM) — município, estado, endereço
+  const handleSearch = async (q: string) => {
+    const trimmed = q.trim();
+    if (trimmed.length < 3) { setSearchResults([]); return; }
+    searchAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
+    setSearching(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=br&accept-language=pt-BR&q=${encodeURIComponent(trimmed)}`;
+      const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error("erro busca");
+      const data = await res.json() as { display_name: string; lat: string; lon: string; type?: string }[];
+      setSearchResults(data);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSelectResult = (r: { lat: string; lon: string }) => {
+    const lat = parseFloat(r.lat);
+    const lng = parseFloat(r.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && mapRef.current) {
+      mapRef.current.setView([lat, lng], 13);
+    }
+    setSearchResults([]);
+    setSearchQuery("");
+  };
+
+  // Debounce da busca
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); return; }
+    const t = setTimeout(() => { handleSearch(searchQuery); }, 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Alturas fixas do header (56px) + busca (44px) + instrução (32px) + controles (56px)
+  // O mapa ocupa o restante. Layout absoluto é mais confiável que flex no portal.
   const HEADER_H = 56;
-  const HINT_H   = 36;
+  const SEARCH_H = 44;
+  const HINT_H   = 32;
   const CTRL_H   = 56;
-  const MAP_TOP  = HEADER_H + HINT_H;   // 92px
-  const MAP_BTM  = CTRL_H;              // 56px
+  const MAP_TOP  = HEADER_H + SEARCH_H + HINT_H;
+  const MAP_BTM  = CTRL_H;
 
   return createPortal(
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#0A0A0A", fontFamily: "var(--font-sans)" }}>
@@ -1535,8 +1650,36 @@ const MapDrawer = ({ name, initialPoints, onSave, onClose }: {
         </button>
       </div>
 
+      {/* Busca por município, estado ou endereço (Nominatim/OSM) */}
+      <div style={{ position: "absolute", top: HEADER_H, left: 0, right: 0, height: SEARCH_H, padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "#0A0A0A", zIndex: 11 }}>
+        <div style={{ position: "relative", height: "100%" }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Buscar município, estado ou endereço..."
+            style={{ width: "100%", height: "100%", padding: "0 12px 0 36px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "#F5F5F5", fontFamily: "inherit", fontSize: 12, outline: "none" }}
+          />
+          <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.4)", fontSize: 14 }}>🔍</div>
+          {searching && <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "#E0FF22", fontSize: 10, fontWeight: 700 }}>...</div>}
+          {searchResults.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "#0A0A0A", border: "1px solid rgba(224,255,34,0.3)", borderRadius: 8, maxHeight: 240, overflowY: "auto", zIndex: 100 }}>
+              {searchResults.map((r, i) => (
+                <button key={i} onClick={() => handleSelectResult(r)}
+                  style={{ display: "block", width: "100%", padding: "10px 12px", textAlign: "left", background: "none", border: "none", borderBottom: i < searchResults.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", color: "rgba(255,255,255,0.85)", fontFamily: "inherit", fontSize: 11, cursor: "pointer", lineHeight: 1.4 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(224,255,34,0.08)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "none")}>
+                  <span style={{ display: "block", color: "#E0FF22", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 2 }}>{r.type || "Local"}</span>
+                  {r.display_name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Instrução */}
-      <div style={{ position: "absolute", top: HEADER_H, left: 0, right: 0, height: HINT_H, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(224,255,34,0.07)", borderBottom: "1px solid rgba(224,255,34,0.15)" }}>
+      <div style={{ position: "absolute", top: HEADER_H + SEARCH_H, left: 0, right: 0, height: HINT_H, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(224,255,34,0.07)", borderBottom: "1px solid rgba(224,255,34,0.15)" }}>
         <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.15em", color: "#E0FF22", margin: 0 }}>
           {points.length === 0
             ? locFound ? "GPS encontrado · Toque no mapa para marcar os vértices" : "Toque no mapa para marcar os vértices da área"
