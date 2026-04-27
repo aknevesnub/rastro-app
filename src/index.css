@@ -7,7 +7,7 @@ html { font-synthesis: none; }
 @theme {
   --color-bg: #0A0A0A;
   --color-text: #F5F5F5;
-  --color-accent: #E0FF22;
+  --color-accent: #0AEF43;   /* verde do logo "Quem Produz" */
   --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
@@ -15,7 +15,7 @@ html { font-synthesis: none; }
 [data-theme="light"] {
   --color-bg: #F5F5F0;
   --color-text: #0A0A0A;
-  --color-accent: #4A7C00;
+  --color-accent: #0F8A30;   /* verde escuro do logo (modo claro) */
 }
 
 /* Flip opacity-based white utilities to dark in light mode */
@@ -111,7 +111,7 @@ body {
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(224,255,34,0.4); }
+::-webkit-scrollbar-thumb:hover { background: rgba(10,239,67,0.4); }
 
 /* ── Responsive breakpoints reference ──
    Mobile   : < 768px   (bottom nav, single column, px-5)
