@@ -1478,8 +1478,9 @@ const FarmPinDrawer = ({ initialPin, onSave, onClose }: {
         </p>
       </div>
 
-      {/* Mapa */}
-      <div ref={containerRef} style={{ position: "absolute", top: MAP_TOP, left: 0, right: 0, bottom: MAP_BTM }} />
+      {/* Mapa — zIndex:0 contém os z-indexes internos do Leaflet (tiles/markers/popups)
+          para que o dropdown de busca fique por cima */}
+      <div ref={containerRef} style={{ position: "absolute", top: MAP_TOP, left: 0, right: 0, bottom: MAP_BTM, zIndex: 0 }} />
 
       {/* Controles */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: CTRL_H, display: "flex", gap: 8, padding: "8px 16px", borderTop: "1px solid rgba(255,255,255,0.1)", background: "#0A0A0A" }}>
@@ -1687,8 +1688,11 @@ const MapDrawer = ({ name, initialPoints, onSave, onClose }: {
         </p>
       </div>
 
-      {/* Container do Leaflet — posicionamento absoluto explícito */}
-      <div ref={containerRef} style={{ position: "absolute", top: MAP_TOP, left: 0, right: 0, bottom: MAP_BTM }} />
+      {/* Container do Leaflet — posicionamento absoluto explícito.
+          zIndex:0 cria um stacking context que CONTÉM os z-indexes internos
+          do Leaflet (tiles=200, markers=600, popups=700) — assim o dropdown
+          de busca (que vive no header com zIndex:11) fica por cima do mapa. */}
+      <div ref={containerRef} style={{ position: "absolute", top: MAP_TOP, left: 0, right: 0, bottom: MAP_BTM, zIndex: 0 }} />
 
       {/* Controles */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: CTRL_H, display: "flex", gap: 8, padding: "8px 16px", borderTop: "1px solid rgba(255,255,255,0.1)", background: "#0A0A0A" }}>
