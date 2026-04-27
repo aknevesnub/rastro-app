@@ -5639,9 +5639,9 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
         cancelUrl: window.location.href,
       });
       if (url.startsWith("#")) {
-        // Mock mode — simulate upgrade instantly
+        // Período de lançamento — trial gratuito de 30 dias
         saveUser({ ...user!, plan: planId });
-        addToast(`Plano ${PLANS[planId].name} ativado! (modo desenvolvimento)`);
+        addToast(`Plano ${PLANS[planId].name} ativado — 30 dias grátis!`, "success");
         go(3);
       } else {
         window.location.href = url;
@@ -5664,7 +5664,7 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
         <div className="text-center mb-8">
           <p className="text-[9px] font-bold uppercase tracking-widest text-accent mb-2">Quem Produz</p>
           <h2 className="text-2xl font-black uppercase tracking-tight text-text mb-2">Escolha seu plano</h2>
-          <p className="text-[11px] text-white/50 max-w-xs mx-auto leading-relaxed">Desbloqueie rastreabilidade completa e acesso a crédito verde</p>
+          <p className="text-[11px] text-white/50 max-w-xs mx-auto leading-relaxed">Comece com <b className="text-accent">30 dias grátis</b>. Rastreabilidade completa, sem cartão de crédito.</p>
         </div>
 
         {/* Plan cards */}
@@ -5718,7 +5718,7 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
                       : "border border-white/20 text-text hover:border-accent/60 active:scale-[.98]"
                   }`}
                 >
-                  {isLoading ? "Aguarde..." : isCurrent ? "Plano atual" : planId === "free" ? "Usar gratuitamente" : `Assinar ${p.name}`}
+                  {isLoading ? "Aguarde..." : isCurrent ? "Plano atual" : planId === "free" ? "Usar gratuitamente" : `Começar 30 dias grátis`}
                 </button>
               </div>
             );
@@ -5730,9 +5730,9 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
           <p className="text-[9px] font-bold uppercase tracking-widest text-white/40">Pagamento & Segurança</p>
           <div className="space-y-2">
             {[
+              "30 dias grátis pra testar — sem cartão de crédito",
               "Cancele quando quiser, sem multa",
-              "Dados de pagamento nunca armazenados localmente",
-              "Integração com Stripe / Asaas disponível",
+              "Dados de pagamento nunca armazenados no app",
               "Suporte via e-mail incluído em todos os planos",
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-2 text-[10px] text-white/50">
@@ -5743,11 +5743,11 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
           </div>
         </div>
 
-        {/* Dev note */}
-        <div className="mt-4 p-4 border border-yellow-400/20 bg-yellow-400/5 rounded-2xl">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-yellow-400/70 mb-1">Modo desenvolvimento</p>
-          <p className="text-[10px] text-white/40 leading-relaxed">
-            O pagamento real será ativado ao conectar Stripe/Asaas em <code className="text-accent/70">src/services/payment.ts</code>. Clique em "Assinar" para simular o upgrade localmente.
+        {/* Trial de lançamento */}
+        <div className="mt-4 p-4 border border-accent/30 bg-accent/5 rounded-2xl">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-accent mb-1">Oferta de lançamento</p>
+          <p className="text-[10px] text-white/55 leading-relaxed">
+            Use qualquer plano <b className="text-text">grátis por 30 dias</b>, sem cartão de crédito. Sem cobrança automática — você decide se continua ao final do período.
           </p>
         </div>
 
