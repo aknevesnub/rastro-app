@@ -19,6 +19,11 @@ const PUBLIC_SELECT = {
   createdAt: true,
   products: true,
   certs: true,
+  practices: {
+    where: { active: true },
+    select: { id: true, category: true, key: true, name: true, startDate: true, photoUrl: true, notes: true },
+    orderBy: { createdAt: "desc" as const },
+  },
 };
 
 // GET /api/farms — lista pública de fazendas (landing page)
@@ -44,7 +49,11 @@ farmsRouter.get("/me", authenticate, async (req: AuthRequest, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
-      include: { products: true, certs: true },
+      include: {
+        products: true,
+        certs: true,
+        practices: { orderBy: { createdAt: "desc" } },
+      },
     });
 
     if (!user) return res.status(404).json({ error: "Usuário não encontrado" });

@@ -107,6 +107,35 @@ export const lots = {
   events: () => request<ApiEvent[]>("/api/lots/events/all"),
 };
 
+// ── Practices (autodeclaração de boas práticas) ──────────────────────────────
+
+export const practices = {
+  list: () => request<ApiPractice[]>("/api/practices"),
+
+  upsert: (data: {
+    category: string;
+    key: string;
+    name: string;
+    active?: boolean;
+    startDate?: string | null;
+    photoUrl?: string | null;
+    notes?: string | null;
+  }) =>
+    request<ApiPractice>("/api/practices", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: string, data: Partial<Omit<ApiPractice, "id" | "userId" | "category" | "key">>) =>
+    request<ApiPractice>(`/api/practices/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  remove: (id: string) =>
+    request<{ ok: boolean }>(`/api/practices/${id}`, { method: "DELETE" }),
+};
+
 // ── Photos ────────────────────────────────────────────────────────────────────
 
 export const photos = {
@@ -145,7 +174,22 @@ export interface ApiUser {
   coverTransform?: { scale: number; x: number; y: number };
   products?: { id: string; name: string }[];
   certs?: { id: string; name: string }[];
+  practices?: ApiPractice[];
   createdAt?: string;
+}
+
+export interface ApiPractice {
+  id: string;
+  userId?: string;
+  category: string;   // "solo" | "biodiversidade" | "pecuaria" | "agua" | "insumos" | "residuos"
+  key: string;        // identificador estável: "plantio_direto", "ilpf", etc.
+  name: string;       // rótulo: "Plantio Direto"
+  active: boolean;
+  startDate?: string | null;
+  photoUrl?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ApiLot {
@@ -174,6 +218,7 @@ export interface ApiLotPublic extends ApiLot {
     logoTransform?: { scale: number; x: number; y: number };
     products?: { id: string; name: string }[];
     certs?: { id: string; name: string }[];
+    practices?: ApiPractice[];
   };
 }
 

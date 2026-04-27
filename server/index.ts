@@ -9,6 +9,7 @@ import { authRouter } from "./routes/auth";
 import { farmsRouter } from "./routes/farms";
 import { lotsRouter } from "./routes/lots";
 import { photosRouter } from "./routes/photos";
+import { practicesRouter } from "./routes/practices";
 import { webhookRouter } from "./routes/webhook";
 
 const app = express();
@@ -68,6 +69,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/farms", farmsRouter);
 app.use("/api/lots", lotsRouter);
 app.use("/api/photos", photosRouter);
+app.use("/api/practices", practicesRouter);
 app.use("/api/webhook", webhookRouter);
 
 // ── Health check ──────────────────────────────────────────────────────────────

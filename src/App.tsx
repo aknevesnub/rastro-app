@@ -1003,7 +1003,7 @@ const NAV_ITEMS = [
   { icon: Sprout, label: "Produção", s: 7 },
   { icon: MapIcon, label: "Mapa", s: 8 },
   { icon: FileText, label: "Docs", s: 11 },
-  { icon: Landmark, label: "Crédito", s: 14 },
+  { icon: Leaf, label: "Práticas", s: 14 },
   { icon: User, label: "Perfil", s: 4 },
 ];
 
@@ -3671,6 +3671,18 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const displayCerts = isViewingOther
     ? (viewedFarm?.certs?.map(c => c.name) ?? [])
     : (user?.certs ?? []);
+  // Práticas declaradas (autodeclaração) — vêm já filtradas por active=true do backend
+  const [myPractices, setMyPractices] = useState<import("./services/api").ApiPractice[]>([]);
+  useEffect(() => {
+    if (isViewingOther) return;
+    if (!API_ENABLED || !api.token.get()) { setMyPractices([]); return; }
+    api.practices.list()
+      .then(list => setMyPractices(list.filter(p => p.active)))
+      .catch(() => setMyPractices([]));
+  }, [isViewingOther]);
+  const displayPractices = isViewingOther
+    ? (viewedFarm?.practices ?? [])
+    : myPractices;
   const displayLots = isViewingOther ? viewedLots : lots;
   const displayEvents = isViewingOther ? [] : events;
 
@@ -3776,6 +3788,35 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
               <div key={i} className="flex items-center gap-2 px-3 py-2 border border-white/10 rounded-xl bg-white/[0.02]">
                 <Sprout size={12} className="text-accent" />
                 <span className="text-xs font-bold text-text uppercase tracking-wide">{p}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Práticas Declaradas (autodeclaração) ── */}
+      {displayPractices.length > 0 && (
+        <div className="px-6 md:px-10 py-6 border-b border-white/10 max-w-5xl mx-auto">
+          <div className="flex items-baseline justify-between mb-4">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-text/40">Práticas Declaradas / Declared Practices</p>
+            <span className="text-[8px] text-white/30 italic">Autodeclaração do produtor</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {displayPractices.map((p) => (
+              <div key={p.id} className="flex items-start gap-3 p-3 border border-white/10 rounded-xl bg-white/[0.02]">
+                <Leaf size={14} className="text-accent shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-xs font-bold text-text uppercase tracking-wide">{p.name}</span>
+                    {p.startDate && (
+                      <span className="text-[9px] font-bold text-accent/70 uppercase tracking-widest">
+                        desde {new Date(p.startDate).toLocaleDateString("pt-BR")}
+                      </span>
+                    )}
+                  </div>
+                  {p.notes && <p className="text-[10px] text-white/55 mt-1 italic">"{p.notes}"</p>}
+                  {p.photoUrl && <img src={p.photoUrl} alt={p.name} className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
+                </div>
               </div>
             ))}
           </div>
@@ -4862,1008 +4903,341 @@ const SDocs = ({ go }: { go: (s: number) => void }) => {
   );
 };
 
+
 // ─────────────────────────────────────────────
-// SCredito — Governança, Checklist, Crédito Verde, Relatório
+// SPraticas — Caderno de Boas Práticas (autodeclaração)
 // ─────────────────────────────────────────────
 
-interface ScoreItem {
-  ok: boolean;
-  label: string;
-  pts: number;
-  cat: string;
-  tip?: string;
-  goTo?: number;
-  actionLabel?: string;
-}
+// Catálogo fixo de práticas, agrupadas por categoria.
+// `key` é o identificador estável usado no banco (não muda nunca).
+// `name` é o rótulo exibido (pode ser ajustado no futuro).
+const PRACTICE_CATALOG: { id: string; label: string; emoji: string; items: { key: string; name: string; hint: string }[] }[] = [
+  {
+    id: "solo", label: "Manejo do solo", emoji: "🌱",
+    items: [
+      { key: "plantio_direto",        name: "Plantio direto",                 hint: "Semeadura sem revolver o solo, mantendo cobertura morta." },
+      { key: "rotacao_cultura",       name: "Rotação de cultura",             hint: "Alterna culturas diferentes na mesma área para preservar o solo." },
+      { key: "cobertura_permanente",  name: "Cobertura permanente",           hint: "Mantém o solo sempre coberto (palhada, braquiária, etc.)." },
+      { key: "terraceamento",         name: "Terraceamento / curvas de nível", hint: "Estruturas que reduzem erosão em terreno inclinado." },
+      { key: "calagem_correcao",      name: "Calagem e correção do solo",     hint: "Análise de solo e aplicação de calcário/gesso conforme laudo." },
+    ],
+  },
+  {
+    id: "biodiversidade", label: "Biodiversidade", emoji: "🌳",
+    items: [
+      { key: "recomposicao_app",      name: "Recomposição de APP",            hint: "Plantio de árvores nativas em Áreas de Preservação Permanente." },
+      { key: "manutencao_rl",         name: "Manutenção da Reserva Legal",    hint: "Conservação ativa do percentual exigido por bioma." },
+      { key: "corredor_ecologico",    name: "Corredor ecológico",             hint: "Faixas vegetadas conectando fragmentos de mata." },
+      { key: "fauna_protegida",       name: "Proteção de fauna nativa",       hint: "Práticas de manejo que evitam caça e atropelamento." },
+    ],
+  },
+  {
+    id: "pecuaria", label: "Pecuária", emoji: "🐄",
+    items: [
+      { key: "ilpf",                  name: "ILPF — Integração lavoura-pecuária-floresta", hint: "Sistema integrado que combina os três componentes." },
+      { key: "pastagem_rotacionada",  name: "Pastagem rotacionada",           hint: "Divisão da pastagem em piquetes com descanso e rotação." },
+      { key: "recuperacao_pastagem",  name: "Recuperação de pastagem degradada", hint: "Reforma de pasto com calagem, adubação e replantio." },
+      { key: "bem_estar_animal",      name: "Bem-estar animal",               hint: "Práticas de manejo que reduzem estresse do rebanho." },
+    ],
+  },
+  {
+    id: "agua", label: "Recursos hídricos", emoji: "💧",
+    items: [
+      { key: "protecao_nascente",     name: "Proteção de nascente",           hint: "Cercamento e revegetação no entorno da nascente." },
+      { key: "irrigacao_eficiente",   name: "Irrigação eficiente",            hint: "Gotejamento, microaspersão ou pivô com manejo." },
+      { key: "captacao_chuva",        name: "Captação de água da chuva",      hint: "Cisternas, barraginhas, terraços de retenção." },
+    ],
+  },
+  {
+    id: "insumos", label: "Insumos", emoji: "🧪",
+    items: [
+      { key: "bioinsumos",            name: "Bioinsumos",                     hint: "Uso de microorganismos e produtos biológicos." },
+      { key: "fixacao_biologica_n",   name: "Fixação biológica de nitrogênio", hint: "Inoculação de bactérias fixadoras (ex: rizóbios)." },
+      { key: "mip",                   name: "MIP — Manejo Integrado de Pragas", hint: "Monitoramento e controle baseado em níveis de dano." },
+      { key: "adubacao_organica",     name: "Adubação orgânica",              hint: "Esterco, composto, biofertilizantes." },
+    ],
+  },
+  {
+    id: "residuos", label: "Resíduos", emoji: "♻️",
+    items: [
+      { key: "compostagem",           name: "Compostagem",                    hint: "Aproveitamento de resíduos orgânicos em adubo." },
+      { key: "embalagens_logistica",  name: "Devolução de embalagens (InpEV)", hint: "Tríplice lavagem e devolução em posto credenciado." },
+      { key: "reuso_efluentes",       name: "Reúso de efluentes",             hint: "Tratamento e reaproveitamento de água residuária." },
+    ],
+  },
+];
 
-const calcGovernanceScore = (user: AppUser | null, lots: Lot[]) => {
-  const items: ScoreItem[] = [];
+const SPraticas = ({ go }: { go: (s: number) => void }) => {
+  const { addToast } = useContext(AppContext);
+  const [practices, setPractices] = useState<api.ApiPractice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<string | null>(null);     // key being edited
+  const [draft, setDraft] = useState<{ active: boolean; startDate: string; notes: string; photoUrl: string }>(
+    { active: true, startDate: "", notes: "", photoUrl: "" }
+  );
+  const [saving, setSaving] = useState(false);
 
-  // ── Categoria 1: Regularidade Legal (25 pts) ─────────────────────────────
-  // Exigido por: todos os bancos (BNDES, BB, Bradesco, Itaú Rural, Sicredi)
-  items.push({ ok: !!(user?.car && user.car.trim().length > 5),
-    label: "CAR — Cadastro Ambiental Rural ativo", pts: 6, cat: "Regularidade Legal",
-    tip: "Informe o número do CAR em Perfil → Autodeclaração", goTo: 4, actionLabel: "Preencher" });
-  items.push({ ok: !!(user?.ccir && user.ccir.trim().length > 3),
-    label: "CCIR — Certificado de Cadastro de Imóvel Rural", pts: 5, cat: "Regularidade Legal",
-    tip: "Informe o número do CCIR em Perfil → Autodeclaração", goTo: 4, actionLabel: "Preencher" });
-  items.push({ ok: !!(user?.matricula && user.matricula.trim().length > 3),
-    label: "Matrícula atualizada no cartório de registro", pts: 5, cat: "Regularidade Legal",
-    tip: "Informe o número da matrícula do imóvel em Perfil → Autodeclaração", goTo: 4, actionLabel: "Preencher" });
-  items.push({ ok: !!(user?.nirf && user.nirf.trim().length > 4),
-    label: "NIRF / ITR — Imóvel Rural cadastrado e em dia", pts: 4, cat: "Regularidade Legal",
-    tip: "Informe o NIRF (Cadastro de Imóvel Rural) no perfil", goTo: 4, actionLabel: "Preencher" });
-  items.push({ ok: !!(user?.cnpj && user.cnpj.trim().length >= 11),
-    label: "CPF / CNPJ do produtor rural ativo", pts: 3, cat: "Regularidade Legal",
-    tip: "Informe o CPF ou CNPJ em Perfil → Autodeclaração", goTo: 4, actionLabel: "Preencher" });
-  items.push({ ok: user?.semEmbargo === true,
-    label: "Sem embargo IBAMA / órgão ambiental", pts: 1, cat: "Regularidade Legal",
-    tip: "Declare que a propriedade não possui embargos ativos", goTo: 4, actionLabel: "Declarar" });
-  items.push({ ok: user?.semTrabalhoEscravo === true,
-    label: "Não consta na lista CETE/MTE (trabalho análogo)", pts: 1, cat: "Regularidade Legal",
-    tip: "Declare conformidade com o cadastro de empregadores do MTE", goTo: 4, actionLabel: "Declarar" });
+  const apiOn = API_ENABLED && !!api.token.get();
 
-  // ── Categoria 2: Conformidade Ambiental (25 pts) ──────────────────────────
-  // Exigido por: BNDES, CPR Verde, Pronaf Eco, RenovAgro, EUDR
-  items.push({ ok: user?.reservaLegal === true,
-    label: "Reserva Legal averbada no CAR", pts: 7, cat: "Conformidade Ambiental",
-    tip: "Certifique que sua RL está regularizada e averbada no CAR", goTo: 4, actionLabel: "Declarar" });
-  items.push({ ok: user?.appArea === true,
-    label: "APP delimitada e preservada", pts: 5, cat: "Conformidade Ambiental",
-    tip: "Declare que as Áreas de Preservação Permanente estão conservadas", goTo: 4, actionLabel: "Declarar" });
-  items.push({ ok: !!(user?.praticasSustentaveis && user.praticasSustentaveis.length >= 2),
-    label: "Práticas adotadas declaradas (≥ 2)", pts: 5, cat: "Conformidade Ambiental",
-    tip: "Declare ao menos 2 práticas: plantio direto, rotação, cobertura, ILP...", goTo: 4, actionLabel: "Declarar" });
-  items.push({ ok: !!(user?.biome && user.biome.trim().length > 0),
-    label: "Bioma da propriedade declarado", pts: 3, cat: "Conformidade Ambiental",
-    tip: "Selecione o bioma onde a fazenda está localizada", goTo: 4, actionLabel: "Selecionar" });
-  items.push({ ok: user?.outorgaAgua === true,
-    label: "Outorga de uso de água (se irrigação)", pts: 5, cat: "Conformidade Ambiental",
-    tip: "Declare a outorga de água para irrigação em Perfil → Autodeclaração", goTo: 4, actionLabel: "Declarar" });
+  useEffect(() => {
+    if (!apiOn) { setLoading(false); return; }
+    api.practices.list()
+      .then(setPractices)
+      .catch(() => addToast("Não foi possível carregar suas práticas", "error"))
+      .finally(() => setLoading(false));
+  }, [apiOn]);
 
-  // ── Categoria 3: Rastreabilidade de Safra (25 pts) ────────────────────────
-  // Exigido por: bancos (custeio/investimento), compradores EUDR
-  const n = lots.length;
-  const allGIS      = n > 0 && lots.every(l => l.mapPoints && l.mapPoints.length > 2);
-  const allPlantio  = n > 0 && lots.every(l => !!l.date);
-  const allColheita = n > 0 && lots.every(l => !!l.colheita);
-  const allVariedade= n > 0 && lots.every(l => !!(l.variedade && l.variedade.trim()));
-  const allDestino  = n > 0 && lots.every(l => !!(l.destino && l.destino.trim()));
-  items.push({ ok: allGIS,
-    label: "Área estimada mapeada em todos os lotes", pts: 7, cat: "Rastreabilidade de Safra",
-    tip: "Delimite a área (~estimativa) de cada lote na tela Mapa", goTo: n === 0 ? 6 : 8, actionLabel: n === 0 ? "Criar lote" : "Mapear" });
-  items.push({ ok: allPlantio,
-    label: "Data de plantio em todos os lotes", pts: 5, cat: "Rastreabilidade de Safra",
-    tip: "Preencha a data de plantio em cada lote cadastrado", goTo: n === 0 ? 6 : 7, actionLabel: n === 0 ? "Criar lote" : "Editar lotes" });
-  items.push({ ok: user?.projetoTecnico === true,
-    label: "Projeto técnico / proposta com eng. agrônomo", pts: 5, cat: "Rastreabilidade de Safra",
-    tip: "Declare que possui projeto técnico assinado por responsável técnico", goTo: 4, actionLabel: "Declarar" });
-  items.push({ ok: allColheita,
-    label: "Data de colheita em todos os lotes", pts: 4, cat: "Rastreabilidade de Safra",
-    tip: "Registre a data de colheita após cada safra", goTo: n === 0 ? 6 : 7, actionLabel: n === 0 ? "Criar lote" : "Editar lotes" });
-  items.push({ ok: allVariedade,
-    label: "Cultivar / variedade declarada por lote", pts: 2, cat: "Rastreabilidade de Safra",
-    tip: "Informe a variedade/cultivar em cada lote", goTo: n === 0 ? 6 : 7, actionLabel: n === 0 ? "Criar lote" : "Editar lotes" });
-  items.push({ ok: allDestino,
-    label: "Destino / comprador declarado por lote", pts: 2, cat: "Rastreabilidade de Safra",
-    tip: "Informe o destino ou comprador em cada lote", goTo: n === 0 ? 6 : 7, actionLabel: n === 0 ? "Criar lote" : "Editar lotes" });
+  const byKey = useMemo(() => {
+    const m: Record<string, api.ApiPractice> = {};
+    for (const p of practices) m[p.key] = p;
+    return m;
+  }, [practices]);
 
-  // ── Categoria 4: Certificações & ESG (25 pts) ────────────────────────────
-  // Exigido por: CRA Verde, Fiagro ESG, IFC, mercado europeu, financiadores verdes
-  const certStr = (user?.certs || []).join(" ").toLowerCase();
-  const hasEUDR = certStr.includes("eudr");
-  const hasVoluntary = ["rainforest", "rtrs", "bonsucro", "orgânico", "globalg.a.p", "uts certified"].some(c => certStr.includes(c));
-  const allPhotos = n > 0 && lots.every(l => l.photos && l.photos.length > 0);
-  const hasGarantia = !!(user?.garantia && user.garantia.trim().length > 0);
-  items.push({ ok: hasGarantia,
-    label: "Garantia declarada (penhor / hipoteca / aval)", pts: 7, cat: "Certificações & ESG",
-    tip: "Declare o tipo de garantia que pode oferecer ao banco", goTo: 4, actionLabel: "Declarar" });
-  items.push({ ok: hasEUDR,
-    label: "Autodeclaração EUDR registrada no perfil", pts: 6, cat: "Certificações & ESG",
-    tip: "Selecione 'EUDR Conforme' nos selos do perfil", goTo: 4, actionLabel: "Adicionar" });
-  items.push({ ok: hasVoluntary,
-    label: "Certificação voluntária (Rainforest / RTRS / Bonsucro / Orgânico)", pts: 6, cat: "Certificações & ESG",
-    tip: "Adicione uma certificação voluntária reconhecida internacionalmente", goTo: 4, actionLabel: "Adicionar" });
-  items.push({ ok: user?.inventarioGHG === true,
-    label: "Inventário de emissões declarado (GHG)", pts: 3, cat: "Certificações & ESG",
-    tip: "Declare que o inventário de GHG foi realizado no perfil", goTo: 4, actionLabel: "Declarar" });
-  items.push({ ok: allPhotos,
-    label: "Fotos dos lotes adicionadas", pts: 3, cat: "Certificações & ESG",
-    tip: "Adicione ao menos 1 foto em cada lote cadastrado", goTo: 9, actionLabel: "Adicionar fotos" });
+  const totalCount = PRACTICE_CATALOG.reduce((s, c) => s + c.items.length, 0);
+  const activeCount = practices.filter(p => p.active).length;
+  const withPhoto = practices.filter(p => p.active && p.photoUrl).length;
 
-  const score = Math.min(100, items.reduce((acc, i) => acc + (i.ok ? i.pts : 0), 0));
-  const cats = ["Regularidade Legal", "Conformidade Ambiental", "Rastreabilidade de Safra", "Certificações & ESG"];
-  const byCategory: Record<string, { score: number; max: number }> = {};
-  for (const cat of cats) {
-    const ci = items.filter(i => i.cat === cat);
-    byCategory[cat] = {
-      score: ci.reduce((acc, i) => acc + (i.ok ? i.pts : 0), 0),
-      max:   ci.reduce((acc, i) => acc + i.pts, 0),
-    };
-  }
-  return { score, items, byCategory };
-};
-
-const openGovernancaReport = (user: AppUser | null, lots: Lot[], addToast: (msg: string, type?: Toast["type"]) => void) => {
-  const { score, items, byCategory } = calcGovernanceScore(user, lots);
-  const totalArea = lots.reduce((a, l) => a + (Number(l.area) || 0), 0);
-  const scoreLabel = score >= 80 ? "Excelente" : score >= 60 ? "Bom" : score >= 40 ? "Regular" : "Inicial";
-  const scoreColor = score >= 70 ? "#166534" : score >= 40 ? "#92400e" : "#991b1b";
-  const cats = ["Regularidade Legal", "Conformidade Ambiental", "Rastreabilidade de Safra", "Certificações & ESG"];
-  const catRows = cats.map(cat => {
-    const { score: cs, max } = byCategory[cat];
-    const status = cs === max ? `<span style="color:#166534">✓ Completo</span>` : cs > 0 ? `<span style="color:#92400e">⚠ Parcial</span>` : `<span style="color:#991b1b">✗ Pendente</span>`;
-    return `<tr><td>${cat}</td><td>${cs}/${max} pts</td><td>${status}</td></tr>`;
-  }).join("");
-  const checkRows = items.map(i =>
-    `<tr><td>${i.cat}</td><td>${i.label}</td><td>${i.pts}</td><td style="color:${i.ok ? "#166534" : "#991b1b"}">${i.ok ? "✓" : "✗"}</td></tr>`
-  ).join("");
-  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Governança — ${esc(user?.farmName)}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;max-width:780px;margin:0 auto;padding:40px;color:#111}
-.badge{display:inline-block;background:${scoreColor};color:#fff;padding:4px 12px;font-size:10px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px}
-h1{font-size:28px;font-weight:900;text-transform:uppercase;letter-spacing:-1px;margin-bottom:6px}.sub{color:#555;font-size:13px;margin-bottom:24px}
-h2{font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:2px;margin:28px 0 12px;color:#555;border-bottom:1px solid #eee;padding-bottom:8px}
-.score-hero{display:flex;align-items:center;gap:32px;margin:20px 0;padding:24px;border:2px solid ${scoreColor}}
-.score-num{font-size:72px;font-weight:900;color:${scoreColor};line-height:1;min-width:100px;text-align:center}
-.score-lbl{font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:2px;color:${scoreColor};text-align:center;margin-top:4px}
-.score-desc{font-size:13px;color:#555;line-height:1.7}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}.card{border:1px solid #ddd;padding:14px}
-.cl{font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:5px}.cv{font-size:17px;font-weight:bold}
-table{width:100%;border-collapse:collapse;margin:14px 0}th{background:#000;color:#fff;padding:10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px}
-td{padding:10px;border-bottom:1px solid #eee;font-size:13px}
-.footer{margin-top:36px;padding-top:14px;border-top:1px solid #ddd;font-size:11px;color:#999}
-.btn{display:inline-block;margin-top:20px;padding:12px 24px;background:#000;color:#fff;border:none;cursor:pointer;font-weight:bold;font-size:12px;text-transform:uppercase;letter-spacing:1px}
-@media print{.no-print{display:none}}</style></head><body>
-<div class="badge">Quem Produz — Relatório de Governança</div>
-<h1>${esc(user?.farmName)}</h1>
-<p class="sub">Produtor: ${esc(user?.name)} | Emitido em: ${new Date().toLocaleDateString("pt-BR", { year: "numeric", month: "long", day: "numeric" })}</p>
-<div class="score-hero">
-  <div><div class="score-num">${score}</div><div class="score-lbl">${scoreLabel}</div><div style="font-size:11px;color:#999;text-align:center;margin-top:2px">de 100 pts</div></div>
-  <div class="score-desc">Este score representa o nível de governança e conformidade da propriedade. Scores acima de 60 habilitam acesso a linhas de crédito verde (RenovAgro, CRA Verde). Acima de 70 são elegíveis para FIAGROs ESG.</div>
-</div>
-<h2>Resumo por Categoria</h2>
-<table><thead><tr><th>Categoria</th><th>Pontuação</th><th>Status</th></tr></thead><tbody>${catRows}</tbody></table>
-<h2>Dados da Propriedade</h2>
-<div class="grid">
-<div class="card"><div class="cl">Fazenda</div><div class="cv">${esc(user?.farmName)}</div></div>
-<div class="card"><div class="cl">Localização</div><div class="cv" style="font-size:14px">${esc(user?.location) || "—"}</div></div>
-<div class="card"><div class="cl">Área Total (estimativa)</div><div class="cv">~${totalArea} ha</div></div>
-<div class="card"><div class="cl">Lotes</div><div class="cv">${lots.length}</div></div>
-</div>
-${user?.certs?.length ? `<h2>Certificações Declaradas</h2><p style="font-size:13px;padding:12px;border:1px solid #ddd">${user.certs.map(c => esc(c)).join(" · ")}</p>` : ""}
-${user?.products?.length ? `<h2>Culturas</h2><p style="font-size:13px;padding:12px;border:1px solid #ddd">${user.products.map(p => esc(p)).join(" · ")}</p>` : ""}
-<h2>Checklist de Conformidade</h2>
-<table><thead><tr><th>Categoria</th><th>Item</th><th>Pts</th><th>Status</th></tr></thead><tbody>${checkRows}</tbody></table>
-<div class="footer">Gerado por Quem Produz | ${new Date().toLocaleString("pt-BR")} | Este relatório serve como base para apresentação a bancos e investidores. Complementar com documentação oficial (CAR físico, ITR, certidões negativas).</div>
-<div class="no-print"><button class="btn" onclick="window.print()">Imprimir / Salvar PDF</button></div>
-</body></html>`;
-  downloadHTML(html, `Governanca_${esc(user?.farmName || "fazenda")}_${new Date().toISOString().slice(0,10)}.html`);
-  addToast("Relatório de Governança gerado!");
-};
-
-const SCredito = ({ go }: { go: (s: number) => void }) => {
-  const { user, lots, addToast, saveUser } = useContext(AppContext);
-  const { can } = usePlan();
-  const [tab, setTab] = useState(0);
-  const [paywallFeature, setPaywallFeature] = useState<string | null>(null);
-  const [openPilar, setOpenPilar] = useState<number | null>(null);
-  // Quick-fill inline states
-  const [qCar, setQCar] = useState(user?.car || "");
-  const [qCcir, setQCcir] = useState(user?.ccir || "");
-  const [qMatricula, setQMatricula] = useState(user?.matricula || "");
-  const [qNirf, setQNirf] = useState(user?.nirf || "");
-  const [qCnpj, setQCnpj] = useState(user?.cnpj || "");
-  const [qGarantia, setQGarantia] = useState(user?.garantia || "");
-  const [qOutorgaAgua, setQOutorgaAgua] = useState(user?.outorgaAgua ?? false);
-  const [qProjetoTecnico, setQProjetoTecnico] = useState(user?.projetoTecnico ?? false);
-  const [qBiome, setQBiome] = useState(user?.biome || "");
-  const [qReservaLegal, setQReservaLegal] = useState(user?.reservaLegal ?? false);
-  const [qAppArea, setQAppArea] = useState(user?.appArea ?? false);
-  const [qPraticas, setQPraticas] = useState<string[]>(user?.praticasSustentaveis || []);
-  const toggleQPratica = (p: string) => setQPraticas(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
-
-  const saveQuick = (patch: Partial<AppUser>) => {
-    if (!user) return;
-    const ok = saveUser({ ...user, ...patch });
-    addToast(ok ? "Salvo!" : "Salvo na sessão atual.", ok ? "success" : "info");
-  };
-  const { score, items, byCategory } = calcGovernanceScore(user, lots);
-  const guardedReport = (label: string, fn: () => void) => {
-    if (!can("reportExport")) { setPaywallFeature(label); return; }
-    fn();
+  const openEditor = (key: string) => {
+    const existing = byKey[key];
+    setDraft({
+      active: existing?.active ?? true,
+      startDate: existing?.startDate ? String(existing.startDate).slice(0, 10) : "",
+      notes: existing?.notes ?? "",
+      photoUrl: existing?.photoUrl ?? "",
+    });
+    setEditing(key);
   };
 
-  const hasCAR  = user?.certs?.some(c => c.toLowerCase().includes("car")) ?? false;
-  const hasEUDR = user?.certs?.some(c => c.toLowerCase().includes("eudr")) ?? false;
-  const mapLots = lots.filter(l => l.mapPoints && l.mapPoints.length > 2).length;
+  const closeEditor = () => { setEditing(null); };
 
-  const eligibility = {
-    renovagro: hasCAR && lots.length > 0,
-    pronaf:    hasCAR,
-    cprVerde:  hasCAR && mapLots > 0,
-    craVerde:  hasCAR && hasEUDR && score >= 60,
-    fiagro:    score >= 70,
+  const handlePhotoUpload = async (file: File) => {
+    if (!apiOn) {
+      addToast("Faça login pra anexar fotos", "info");
+      return;
+    }
+    try {
+      const url = await api.photos.upload(file);
+      setDraft(d => ({ ...d, photoUrl: url }));
+    } catch {
+      addToast("Falha no upload da foto", "error");
+    }
   };
 
-  const scoreColor  = score >= 70 ? "var(--color-accent)" : score >= 40 ? "#FFA500" : "#FF5555";
-  const scoreLabel  = score >= 80 ? "Excelente" : score >= 60 ? "Bom" : score >= 40 ? "Regular" : "Inicial";
-  const cats        = ["Regularidade Legal", "Conformidade Ambiental", "Rastreabilidade de Safra", "Certificações & ESG"];
-  const TABS        = ["Score", "Governança", "Guia Prático", "Linhas de Crédito", "Relatório"];
+  const saveDraft = async (catalogItem: { key: string; name: string }, category: string) => {
+    if (!apiOn) {
+      addToast("Faça login pra salvar suas práticas", "info");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await api.practices.upsert({
+        category,
+        key: catalogItem.key,
+        name: catalogItem.name,
+        active: draft.active,
+        startDate: draft.startDate || null,
+        photoUrl: draft.photoUrl || null,
+        notes: draft.notes || null,
+      });
+      setPractices(prev => {
+        const idx = prev.findIndex(p => p.key === saved.key);
+        if (idx >= 0) { const copy = [...prev]; copy[idx] = saved; return copy; }
+        return [saved, ...prev];
+      });
+      addToast(draft.active ? "Prática registrada!" : "Prática desmarcada", "success");
+      closeEditor();
+    } catch {
+      addToast("Erro ao salvar", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const CREDIT_LINES = [
-    {
-      name: "RenovAgro", sub: "ex-ABC+", rate: "8,5% a.a.", limit: "Até R$ 5 mi",
-      desc: "Menor taxa do Plano Safra empresarial. Financia recuperação de pastagens, iLPF e sistemas agroflorestais.",
-      eligible: eligibility.renovagro,
-      reqs: ["CAR regularizado", "Ao menos 1 lote cadastrado", "Projeto técnico de agrônomo"],
-      met:  [hasCAR, lots.length > 0, false],
-      inst: "BNDES / BB / Bradesco Agro",
-      href: "https://www.bndes.gov.br/wps/portal/site/home/financiamento/produto/renovagro",
-    },
-    {
-      name: "PRONAF Sustentável", sub: "Agricultura Familiar", rate: "0,5–8% a.a.", limit: "Até R$ 415 mil",
-      desc: "Crédito rural com as menores taxas do Brasil para agricultores familiares com práticas sustentáveis.",
-      eligible: eligibility.pronaf,
-      reqs: ["CAF — Cadastro Agricultura Familiar", "CAR regularizado", "Até 4 módulos fiscais"],
-      met:  [false, hasCAR, false],
-      inst: "Banco do Brasil / Caixa",
-      href: "https://www.gov.br/mda/pt-br/assuntos/creditorural",
-    },
-    {
-      name: "CPR Verde", sub: "Cédula de Produto Rural", rate: "Mercado", limit: "Sem limite fixo",
-      desc: "Acesso ao mercado de capitais com remuneração vinculada à conservação florestal e serviços ambientais.",
-      eligible: eligibility.cprVerde,
-      reqs: ["CAR regularizado", "Área mapeada com polígono GIS", "Histórico de lotes"],
-      met:  [hasCAR, mapLots > 0, lots.length > 0],
-      inst: "Bancos privados / Corretoras",
-      href: "https://www.bcb.gov.br/estabilidadefinanceira/cpr",
-    },
-    {
-      name: "CRA Verde", sub: "Certificado de Recebíveis", rate: "CDI + 1–3%", limit: "Sem limite",
-      desc: "Título de renda fixa ESG emitido por securitizadoras. Ideal para médios e grandes produtores com EUDR.",
-      eligible: eligibility.craVerde,
-      reqs: ["Score de governança ≥ 60", "CAR regularizado", "Conformidade EUDR declarada"],
-      met:  [score >= 60, hasCAR, hasEUDR],
-      inst: "Securitizadoras / B3",
-      href: "https://www.wwf.org.br/?62682",
-    },
-    {
-      name: "FIAGRO ESG", sub: "Fundo de Investimento", rate: "Negociável", limit: "Conforme fundo",
-      desc: "Fundo de investimento agro com critérios ESG obrigatórios. Acesso a capital institucional qualificado.",
-      eligible: eligibility.fiagro,
-      reqs: ["Score de governança ≥ 70", "Contabilidade estruturada (PJ)", "Gestão documentada"],
-      met:  [score >= 70, false, false],
-      inst: "B3 / Gestoras de fundos",
-      href: "https://www.suno.com.br/guias/fiagro/",
-    },
-  ];
-
-  const CHECKLISTS = [
-    {
-      program: "EUDR — Exportação UE", deadline: "Dez 2026", color: "border-blue-400 text-blue-400",
-      items: [
-        { label: "CAR ativo e regularizado",                  ok: hasCAR },
-        { label: "Polígono georreferenciado dos lotes",       ok: mapLots > 0 },
-        { label: "Datas de plantio registradas",              ok: lots.filter(l => !!l.date).length > 0 },
-        { label: "Documentação fundiária (ITR / escritura)",  ok: false, manual: true },
-        { label: "Conformidade EUDR declarada",               ok: hasEUDR },
-        { label: "Ausência de desmatamento pós-2020",         ok: true,  note: "Verificado via PRODES/INPE" },
-      ],
-    },
-    {
-      program: "RenovAgro", deadline: "Contínuo", color: "border-accent text-accent",
-      items: [
-        { label: "CAR ativo e regularizado",                  ok: hasCAR },
-        { label: "Ao menos 1 lote cadastrado",                ok: lots.length > 0 },
-        { label: "Prática sustentável documentada",           ok: hasEUDR },
-        { label: "Projeto técnico de engenheiro agrônomo",    ok: false, manual: true },
-        { label: "ZARC respeitado (Zoneamento Agrícola)",     ok: false, manual: true },
-      ],
-    },
-    {
-      program: "PRONAF Sustentável", deadline: "Contínuo", color: "border-green-400 text-green-400",
-      items: [
-        { label: "CAF — Cadastro da Agricultura Familiar",    ok: false, manual: true },
-        { label: "CAR regularizado",                          ok: hasCAR },
-        { label: "Propriedade até 4 módulos fiscais",         ok: false, manual: true },
-        { label: "Sem embargo ou autuação ambiental",         ok: true,  note: "Verificado via IBAMA" },
-        { label: "Renda agropecuária predominante",           ok: false, manual: true },
-      ],
-    },
-  ];
-
-  const eligibleCount = Object.values(eligibility).filter(Boolean).length;
+  const removePractice = async (id: string) => {
+    if (!apiOn) return;
+    try {
+      await api.practices.remove(id);
+      setPractices(prev => prev.filter(p => p.id !== id));
+      addToast("Prática removida", "info");
+    } catch {
+      addToast("Erro ao remover", "error");
+    }
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-32 md:pb-10">
-      {paywallFeature && <PaywallModal feature={paywallFeature} onClose={() => setPaywallFeature(null)} onUpgrade={() => go(15)} />}
-      <TopBar title="Crédito & Governança" onBack={() => go(3)} right={<ThemeToggle />} />
+      <TopBar title="Minha Fazenda em Prática" onBack={() => go(3)} right={<ThemeToggle />} />
 
       <div className="px-5 md:px-8 max-w-5xl mx-auto">
-        {/* Tabs */}
-        <div className="flex border-b border-white/10 mb-6 overflow-x-auto no-scrollbar">
-          {TABS.map((t, i) => (
-            <button key={i} onClick={() => setTab(i)}
-              className={`shrink-0 py-4 px-3 md:px-5 text-[10px] font-bold uppercase tracking-widest transition-all ${tab === i ? "text-accent border-b-2 border-accent" : "text-white/40 hover:text-white/80"}`}>
-              {t}
-            </button>
+        {/* Aviso de autodeclaração */}
+        <div className="mb-6 p-4 border border-yellow-500/30 bg-yellow-500/5 rounded-2xl flex items-start gap-3">
+          <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
+          <div className="text-[11px] text-white/70 leading-relaxed">
+            <span className="font-bold text-yellow-400 uppercase tracking-widest text-[9px] block mb-1">Autodeclaração</span>
+            Você organiza aqui o que já faz na fazenda. As informações são <b>declaradas pelo produtor</b> e não substituem auditoria, certificação ou análise de crédito. Servem como vitrine de transparência pra compradores, bancos e parceiros.
+          </div>
+        </div>
+
+        {/* Resumo */}
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {[
+            { value: activeCount, label: "Práticas declaradas" },
+            { value: `${activeCount}/${totalCount}`, label: "Do catálogo" },
+            { value: withPhoto, label: "Com foto" },
+          ].map((s, i) => (
+            <div key={i} className="border border-white/10 bg-white/[0.02] rounded-2xl p-3 text-center">
+              <div className="text-xl font-black text-text">{s.value}</div>
+              <div className="text-[8px] font-bold uppercase tracking-widest mt-0.5 text-text/35">{s.label}</div>
+            </div>
           ))}
         </div>
 
-        {/* ── Tab 0: Score ─────────────────────────────────── */}
-        {tab === 0 && (
-          <div>
-            <div className="flex flex-col md:flex-row gap-8 mb-8 items-center md:items-start">
-              {/* Circular score */}
-              <div className="flex flex-col items-center shrink-0">
-                <div className="relative w-44 h-44">
-                  <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-                    <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
-                    <circle cx="60" cy="60" r="50" fill="none" stroke={scoreColor}
-                      strokeWidth="10" strokeLinecap="round"
-                      strokeDasharray={`${(score / 100) * 314.16} 314.16`} />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="font-black text-5xl" style={{ color: scoreColor }}>{score}</span>
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-white/40">de 100</span>
-                  </div>
-                </div>
-                <span className="mt-3 text-sm font-black uppercase tracking-widest" style={{ color: scoreColor }}>{scoreLabel}</span>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-white/40 mt-1">Score de Governança</span>
-              </div>
+        {loading && <p className="text-white/40 text-xs text-center py-6">Carregando práticas...</p>}
 
-              {/* Category bars */}
-              <div className="flex-1 w-full space-y-4">
-                {cats.map(cat => {
-                  const { score: cs, max } = byCategory[cat];
-                  const pct = Math.round((cs / max) * 100);
-                  const barColor = pct === 100 ? "var(--color-accent)" : pct > 50 ? "#FFA500" : "#FF5555";
-                  return (
-                    <div key={cat}>
-                      <div className="flex justify-between mb-1.5">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-text/80">{cat}</span>
-                        <span className="text-[10px] font-bold text-white/40">{cs}/{max} pts</span>
-                      </div>
-                      <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Summary line */}
-                <div className="pt-2 border-t border-white/10 flex gap-6">
-                  <div className="text-center">
-                    <div className="font-black text-2xl text-accent">{eligibleCount}</div>
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">linhas elegíveis</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-black text-2xl text-text">{items.filter(i => i.ok).length}</div>
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">de {items.length} critérios</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-black text-2xl text-text">{lots.length}</div>
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">lotes registrados</div>
-                  </div>
-                </div>
-              </div>
+        {!loading && PRACTICE_CATALOG.map(category => (
+          <div key={category.id} className="mb-8">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">{category.emoji}</span>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-accent">{category.label}</h3>
+              <span className="text-[9px] font-bold text-white/30">
+                {category.items.filter(i => byKey[i.key]?.active).length} / {category.items.length}
+              </span>
             </div>
-
-            {/* What the score means */}
-            <div className="p-4 border border-white/10 rounded-2xl mb-6 bg-white/2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-2">O que significa</p>
-              <p className="text-xs text-white/60 leading-relaxed">
-                {score >= 80
-                  ? "Excelente estrutura de governança. Sua fazenda está pronta para acessar crédito verde, exportar para a UE e captar via FIAGROs. Mantenha os registros atualizados."
-                  : score >= 60
-                  ? "Boa base. Regularize o CAR e mapeie os polígonos dos lotes para desbloquear linhas de crédito com as menores taxas do agronegócio."
-                  : score >= 40
-                  ? "Em desenvolvimento. Foque em completar o perfil, adicionar lotes com datas e incluir o CAR nas certificações para melhorar o acesso a crédito."
-                  : "Fase inicial. Comece pelo perfil completo e cadastro de lotes — esses passos desbloqueiam as principais linhas de crédito rural sustentável."}
-              </p>
-            </div>
-
-            {/* Pending items */}
-            {items.filter(i => !i.ok).length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">Próximos passos para aumentar o score</p>
-                <div className="space-y-2">
-                  {items.filter(i => !i.ok).map((item, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 border border-white/8 rounded-2xl bg-white/2">
-                      <AlertTriangle size={14} className="text-yellow-500 shrink-0 mt-0.5" />
+            <div className="space-y-2">
+              {category.items.map(item => {
+                const declared = byKey[item.key];
+                const isActive = !!declared?.active;
+                return (
+                  <div key={item.key}
+                    className={`border rounded-2xl p-3 transition-colors ${isActive ? "border-accent/40 bg-accent/[0.04]" : "border-white/8 bg-white/[0.02]"}`}>
+                    <div className="flex items-start gap-3">
+                      <button onClick={() => openEditor(item.key)}
+                        className={`shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors mt-0.5 ${isActive ? "bg-accent border-accent" : "border-white/20"}`}
+                        aria-label={isActive ? "Editar prática" : "Marcar prática"}>
+                        {isActive && <Check size={14} className="text-bg" />}
+                      </button>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-bold text-text truncate">{item.label}</div>
-                        <div className="text-[10px] text-white/40">{item.tip}</div>
-                        {item.goTo !== undefined && (
-                          <button onClick={() => go(item.goTo!)}
-                            className="mt-1.5 flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-bg bg-accent px-2.5 py-1 hover:bg-accent/80 transition-colors rounded-md">
-                            {item.actionLabel || "Resolver"} <ChevronRight size={8} />
-                          </button>
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <span className={`text-xs font-bold uppercase tracking-wide ${isActive ? "text-text" : "text-white/70"}`}>{item.name}</span>
+                          {declared?.startDate && (
+                            <span className="text-[9px] font-bold text-accent/70 uppercase tracking-widest">
+                              desde {new Date(declared.startDate).toLocaleDateString("pt-BR")}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-white/40 mt-0.5">{item.hint}</p>
+                        {declared?.notes && (
+                          <p className="text-[10px] text-white/55 mt-1.5 italic">"{declared.notes}"</p>
                         )}
-                      </div>
-                      <span className="text-[9px] font-bold uppercase text-accent shrink-0">+{item.pts}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Tab 1: Governança ────────────────────────────── */}
-        {tab === 1 && (() => {
-          const nivel = score >= 80 ? 4 : score >= 60 ? 3 : score >= 30 ? 2 : score > 0 ? 1 : 0;
-          const nivelLabel = ["Sem governança", "Iniciante", "Organizada", "Documentada", "Premium"];
-          const nivelColor = ["text-white/30", "#FF5555", "#FFA500", "var(--color-accent)", "var(--color-accent)"];
-          const nivelDesc = [
-            "Sua fazenda ainda não tem estrutura de governança. Comece pelo passo 1.",
-            "Bom começo. Sua fazenda já tem alguns registros — continue construindo.",
-            "Sua fazenda está organizada. Compradores já conseguem te encontrar e confiar.",
-            "Fazenda bem documentada. Você já tem acesso às principais linhas de crédito verde.",
-            "Referência de governança. Sua fazenda está pronta para qualquer comprador ou investidor.",
-          ];
-
-          const qInputCls = "w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-[11px] text-text placeholder:text-white/25 outline-none focus:border-accent/50 transition-colors";
-          const qLabelCls = "block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1";
-          const qCheckCls = (v: boolean) => `flex items-center gap-3 px-3 py-2.5 border rounded-xl cursor-pointer transition-all ${v ? "border-accent/50 bg-accent/8" : "border-white/10 bg-transparent"}`;
-
-          const pilares = [
-            {
-              icon: "🏠", num: "01", title: "Identidade da fazenda",
-              concept: "É quem você é. Nome, história, localização, logo e o que você produz.",
-              value: "Compradores buscam por fazendas com perfil completo. Uma fazenda sem rosto é uma fazenda esquecida.",
-              inside: "Dentro da porteira: é a narrativa da sua propriedade — o que começou quando, por quem, com qual diferencial.",
-              done: !!(user?.logo && user?.description && user?.location && user?.products?.length),
-              items: [
-                { label: "Logo da fazenda", ok: !!user?.logo },
-                { label: "Descrição / história", ok: !!(user?.description && user.description.length > 10) },
-                { label: "Localização declarada", ok: !!user?.location },
-                { label: "O que você produz", ok: !!(user?.products && user.products.length > 0) },
-              ],
-              action: () => go(4), actionLabel: "Construir identidade",
-              form: null,
-            },
-            {
-              icon: "📋", num: "02", title: "Números da propriedade",
-              concept: "Os documentos que provam que sua fazenda existe legalmente: CAR, CCIR, Matrícula, NIRF e CPF/CNPJ. Exigidos por todos os bancos.",
-              value: "Sem CCIR e Matrícula, nenhum banco abre crédito rural — nem RenovAgro, nem Pronaf. Com eles, você acessa juros de 8% a.a. e pode dar hipoteca como garantia.",
-              inside: "Dentro da porteira: você já tem esses documentos em gaveta ou arquivo. É só registrar os números aqui.",
-              done: !!(user?.car && user?.ccir && user?.matricula && user?.nirf && user?.cnpj),
-              items: [
-                { label: "CAR — Cadastro Ambiental Rural", ok: !!(user?.car && user.car.trim().length > 5) },
-                { label: "CCIR — Certificado de Cadastro de Imóvel Rural", ok: !!(user?.ccir && user.ccir.trim().length > 3) },
-                { label: "Matrícula do imóvel (cartório)", ok: !!(user?.matricula && user.matricula.trim().length > 3) },
-                { label: "NIRF / ITR em dia", ok: !!(user?.nirf && user.nirf.trim().length > 4) },
-                { label: "CPF ou CNPJ", ok: !!(user?.cnpj && user.cnpj.trim().length >= 11) },
-              ],
-              action: null, actionLabel: "",
-              form: (
-                <div className="space-y-3">
-                  <div>
-                    <label className={qLabelCls}>CAR — Cadastro Ambiental Rural</label>
-                    <input className={qInputCls} value={qCar} onChange={e => setQCar(e.target.value)} placeholder="BR-XX-0000000-XXXXXXXX" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className={qLabelCls}>CCIR</label>
-                      <input className={qInputCls} value={qCcir} onChange={e => setQCcir(e.target.value)} placeholder="Ex: 800123456789" />
-                    </div>
-                    <div>
-                      <label className={qLabelCls}>Matrícula (cartório)</label>
-                      <input className={qInputCls} value={qMatricula} onChange={e => setQMatricula(e.target.value)} placeholder="Ex: 12345" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className={qLabelCls}>NIRF / ITR</label>
-                      <input className={qInputCls} value={qNirf} onChange={e => setQNirf(e.target.value)} placeholder="Ex: 1234567" />
-                    </div>
-                    <div>
-                      <label className={qLabelCls}>CPF / CNPJ</label>
-                      <input className={qInputCls} value={qCnpj} onChange={e => setQCnpj(e.target.value)} placeholder="000.000.000-00" />
-                    </div>
-                  </div>
-                  <button onClick={() => saveQuick({ car: qCar, ccir: qCcir, matricula: qMatricula, nirf: qNirf, cnpj: qCnpj })}
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-[9px] font-black uppercase tracking-widest bg-accent text-bg hover:bg-accent/80 transition-colors rounded-xl">
-                    <Check size={11} /> Salvar números
-                  </button>
-                </div>
-              ),
-            },
-            {
-              icon: "🌾", num: "03", title: "Histórico de produção",
-              concept: "O registro de cada safra: cultura, área estimada, datas de plantio e colheita, e para quem foi vendido. Inclui o projeto técnico para crédito.",
-              value: "Histórico documentado = poder de negociação. O banco exige projeto técnico assinado por agrônomo para liberar custeio ou investimento.",
-              inside: "Dentro da porteira: é o que você já sabe de cabeça — é só registrar. Cada lote vira um QR rastreável.",
-              done: lots.length > 0 && lots.every(l => !!l.date) && !!user?.projetoTecnico,
-              items: [
-                { label: "Lotes cadastrados", ok: lots.length > 0 },
-                { label: "Data de plantio em cada lote", ok: lots.length > 0 && lots.every(l => !!l.date) },
-                { label: "Data de colheita registrada", ok: lots.length > 0 && lots.every(l => !!l.colheita) },
-                { label: "Destino/comprador declarado", ok: lots.length > 0 && lots.every(l => !!(l.destino && l.destino.trim())) },
-                { label: "Projeto técnico com eng. agrônomo", ok: !!user?.projetoTecnico },
-              ],
-              action: () => go(lots.length === 0 ? 6 : 7), actionLabel: lots.length === 0 ? "Criar primeiro lote" : "Editar lotes",
-              form: (
-                <div className="space-y-3">
-                  <div className={qCheckCls(qProjetoTecnico)} onClick={() => { const v = !qProjetoTecnico; setQProjetoTecnico(v); saveQuick({ projetoTecnico: v }); }}>
-                    <div className={`w-4 h-4 border flex items-center justify-center shrink-0 rounded ${qProjetoTecnico ? "border-accent bg-accent" : "border-white/30"}`}>
-                      {qProjetoTecnico && <Check size={9} className="text-bg" />}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-text">Projeto técnico com eng. agrônomo</p>
-                      <p className="text-[9px] text-white/40">Exigido pelo banco para custeio e investimento</p>
-                    </div>
-                  </div>
-                  <button onClick={() => go(lots.length === 0 ? 6 : 7)}
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-[9px] font-black uppercase tracking-widest bg-white/8 text-text hover:bg-white/12 transition-colors rounded-xl border border-white/10">
-                    {lots.length === 0 ? "Criar primeiro lote" : "Completar dados dos lotes"} <ChevronRight size={11} />
-                  </button>
-                </div>
-              ),
-            },
-            {
-              icon: "🚜", num: "04", title: "Inventário operacional",
-              concept: "Tudo dentro da porteira que o satélite não enxerga: práticas adotadas, outorga de água, garantias e o que você declara ao banco.",
-              value: "Outorga de água é exigida se você irriga. Garantia (penhor, hipoteca ou aval) é a contrapartida obrigatória em qualquer linha de crédito rural.",
-              inside: "Dentro da porteira: seus equipamentos, suas práticas e seus documentos de uso da terra são ativos — declare o que você já tem.",
-              done: !!(user?.praticasSustentaveis && user.praticasSustentaveis.length >= 2 && user?.garantia),
-              items: [
-                { label: "Garantia declarada (penhor/hipoteca/aval)", ok: !!(user?.garantia && user.garantia.trim()) },
-                { label: "Outorga de água (se irrigação)", ok: !!user?.outorgaAgua },
-                { label: "Bioma da propriedade", ok: !!(user?.biome && user.biome.trim()) },
-                { label: "Práticas declaradas (mín. 2)", ok: !!(user?.praticasSustentaveis && user.praticasSustentaveis.length >= 2) },
-                { label: "Reserva Legal e APP declaradas", ok: !!(user?.reservaLegal && user?.appArea) },
-              ],
-              action: null, actionLabel: "",
-              form: (
-                <div className="space-y-4">
-                  <div>
-                    <label className={qLabelCls}>Garantia para crédito rural</label>
-                    <div className="flex flex-wrap gap-2">
-                      {[{ val: "penhor", label: "Penhor (safra)" }, { val: "hipoteca", label: "Hipoteca" }, { val: "aval", label: "Aval" }].map(g => (
-                        <div key={g.val} onClick={() => setQGarantia(qGarantia === g.val ? "" : g.val)}
-                          className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest cursor-pointer border rounded-full transition-all ${qGarantia === g.val ? "bg-accent text-bg border-accent" : "bg-transparent border-white/20 text-white/60"}`}>
-                          {g.label}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className={qLabelCls}>Bioma</label>
-                    <div className="flex flex-wrap gap-2">
-                      {BIOMES.map(b => (
-                        <div key={b} onClick={() => setQBiome(qBiome === b ? "" : b)}
-                          className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest cursor-pointer border rounded-full transition-all ${qBiome === b ? "bg-accent text-bg border-accent" : "bg-transparent border-white/20 text-white/60"}`}>
-                          {b}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className={qLabelCls}>Práticas adotadas</label>
-                    <div className="flex flex-wrap gap-2">
-                      {PRATICAS.map(p => (
-                        <div key={p} onClick={() => toggleQPratica(p)}
-                          className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest cursor-pointer border rounded-full transition-all ${qPraticas.includes(p) ? "bg-accent text-bg border-accent" : "bg-transparent border-white/20 text-white/60"}`}>
-                          {p}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {[
-                      { val: qReservaLegal, set: (v: boolean) => setQReservaLegal(v), label: "Reserva Legal averbada no CAR", sub: "Exigida para linhas verdes" },
-                      { val: qAppArea, set: (v: boolean) => setQAppArea(v), label: "APP delimitada e preservada", sub: "Exigida pelo BNDES e CPR Verde" },
-                      { val: qOutorgaAgua, set: (v: boolean) => setQOutorgaAgua(v), label: "Outorga de uso de água", sub: "Obrigatória se irrigar" },
-                    ].map(({ val, set, label, sub }) => (
-                      <div key={label} className={qCheckCls(val)} onClick={() => set(!val)}>
-                        <div className={`w-4 h-4 border flex items-center justify-center shrink-0 rounded ${val ? "border-accent bg-accent" : "border-white/30"}`}>
-                          {val && <Check size={9} className="text-bg" />}
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-text">{label}</p>
-                          <p className="text-[9px] text-white/40">{sub}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={() => saveQuick({ garantia: qGarantia, biome: qBiome, praticasSustentaveis: qPraticas, reservaLegal: qReservaLegal, appArea: qAppArea, outorgaAgua: qOutorgaAgua })}
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-[9px] font-black uppercase tracking-widest bg-accent text-bg hover:bg-accent/80 transition-colors rounded-xl">
-                    <Check size={11} /> Salvar inventário
-                  </button>
-                </div>
-              ),
-            },
-            {
-              icon: "📷", num: "05", title: "Evidências visuais",
-              concept: "Fotos reais do campo, da colheita, das máquinas e das práticas. Feitas por você, do dia a dia.",
-              value: "Uma foto do trator novo vale mais do que qualquer laudo. Compradores europeus confiam em evidências visuais — é o que diferencia sua fazenda das outras.",
-              inside: "Dentro da porteira: tire foto hoje. Do lote plantado, da máquina, da colheita. São os documentos mais verdadeiros que existem.",
-              done: lots.length > 0 && lots.every(l => l.photos && l.photos.length > 0),
-              items: [
-                { label: `Fotos em ${lots.filter(l => l.photos && l.photos.length > 0).length}/${lots.length} lotes`, ok: lots.length > 0 && lots.every(l => l.photos && l.photos.length > 0) },
-              ],
-              action: () => go(9), actionLabel: "Adicionar fotos",
-              form: null,
-            },
-            {
-              icon: "🗺", num: "06", title: "Mapa da propriedade",
-              concept: "O contorno da sua propriedade desenhado no mapa satélite. A área é uma estimativa — erro de 1 a 3 hectares é normal.",
-              value: "Organiza visualmente sua fazenda para compradores e bancos. Não é uma medição oficial — é uma referência digital da sua área.",
-              inside: "Dentro da porteira: você sabe os limites da sua terra. Marque no mapa — em 5 minutos está feito.",
-              done: lots.length > 0 && lots.every(l => l.mapPoints && l.mapPoints.length > 2),
-              items: [
-                { label: `Área mapeada em ${lots.filter(l => l.mapPoints && l.mapPoints.length > 2).length}/${lots.length} lotes`, ok: lots.length > 0 && lots.every(l => l.mapPoints && l.mapPoints.length > 2) },
-              ],
-              action: () => go(lots.length === 0 ? 6 : 8), actionLabel: lots.length === 0 ? "Criar lote primeiro" : "Mapear área",
-              form: null,
-            },
-          ];
-
-          const pilaresOk = pilares.filter(p => p.done).length;
-
-          return (
-            <div>
-              {/* Nível atual */}
-              <div className="mb-6 p-4 border rounded-2xl" style={{ borderColor: nivel > 0 ? "rgba(224,255,34,0.2)" : "rgba(255,255,255,0.1)" }}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Nível atual da sua fazenda</p>
-                  <span className="text-[10px] font-black uppercase tracking-widest"
-                    style={{ color: nivelColor[nivel].startsWith("#") || nivelColor[nivel].startsWith("var") ? nivelColor[nivel] : undefined }}>
-                    {nivelLabel[nivel]}
-                  </span>
-                </div>
-                <div className="h-2 bg-white/8 rounded-full overflow-hidden mb-2">
-                  <div className="h-full rounded-full transition-all duration-700 bg-accent" style={{ width: `${(pilaresOk / pilares.length) * 100}%` }} />
-                </div>
-                <p className="text-[10px] text-white/40 leading-relaxed">{nivelDesc[nivel]}</p>
-              </div>
-
-              {/* Pilares */}
-              <p className="text-[9px] font-black uppercase tracking-widest text-white/30 mb-4">Os 6 pilares — toque para preencher</p>
-              <div className="space-y-3">
-                {pilares.map((p, pi) => (
-                  <div key={pi} className={`border rounded-2xl overflow-hidden transition-colors ${p.done ? "border-accent/25 bg-accent/3" : "border-white/10"}`}>
-                    {/* Header */}
-                    <button onClick={() => setOpenPilar(openPilar === pi ? null : pi)}
-                      className="w-full flex items-center gap-3 p-4 text-left">
-                      <span className="text-lg shrink-0">{p.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[8px] font-black uppercase tracking-widest text-white/30">{p.num}</span>
-                          <span className={`text-xs font-black uppercase tracking-tight ${p.done ? "text-text" : "text-white/70"}`}>{p.title}</span>
-                          {p.done && <BadgeCheck size={13} className="text-accent shrink-0" />}
-                        </div>
-                        <p className="text-[10px] text-white/40 truncate mt-0.5">{p.concept.substring(0, 60)}…</p>
-                      </div>
-                      <ChevronRight size={14} className={`text-white/30 shrink-0 transition-transform ${openPilar === pi ? "rotate-90" : ""}`} />
-                    </button>
-
-                    {/* Expandido */}
-                    {openPilar === pi && (
-                      <div className="px-4 pb-4 border-t border-white/8 pt-4 space-y-4">
-                        {/* Checklist de status */}
-                        <div className="space-y-1.5">
-                          {p.items.map((it, ii) => (
-                            <div key={ii} className="flex items-center gap-2.5">
-                              <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${it.ok ? "bg-accent/20" : "border border-white/20"}`}>
-                                {it.ok && <Check size={9} className="text-accent" />}
-                              </div>
-                              <span className={`text-[10px] font-medium ${it.ok ? "text-white/35 line-through" : "text-white/60"}`}>{it.label}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Por que importa */}
-                        <div className="bg-accent/8 border border-accent/20 rounded-xl p-3">
-                          <p className="text-[9px] font-black uppercase tracking-widest text-accent mb-1">💡 Por que vale dinheiro</p>
-                          <p className="text-[10px] text-white/60 leading-relaxed">{p.value}</p>
-                        </div>
-
-                        {/* Form inline ou botão de ação */}
-                        {p.form ? (
-                          <div className="border border-white/10 rounded-xl p-3 bg-white/2 space-y-3">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-accent">Preencher agora</p>
-                            {p.form}
-                          </div>
-                        ) : p.action && !p.done ? (
-                          <button onClick={p.action}
-                            className="flex items-center gap-1.5 px-4 py-2.5 text-[9px] font-black uppercase tracking-widest bg-accent text-bg hover:bg-accent/80 transition-colors rounded-xl w-full justify-center">
-                            {p.actionLabel} <ChevronRight size={11} />
-                          </button>
-                        ) : null}
-
-                        {p.done && (
-                          <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-accent">
-                            <BadgeCheck size={13} /> Pilar completo
-                          </div>
+                        {declared?.photoUrl && (
+                          <img src={declared.photoUrl} alt={item.name}
+                            className="mt-2 w-32 h-20 object-cover rounded-lg border border-white/10" />
                         )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* O que você desbloqueia */}
-              <div className="mt-8 p-5 border border-white/10 rounded-2xl">
-                <p className="text-[9px] font-black uppercase tracking-widest text-accent mb-4">O que você desbloqueia em cada nível</p>
-                {[
-                  { nivel: "Iniciante (1+ pilar)", cor: "#FF5555", unlock: "Perfil público na vitrine · QR rastreável por lote" },
-                  { nivel: "Organizada (2–3 pilares)", cor: "#FFA500", unlock: "Pronaf · Proagro · Primeiros compradores digitais" },
-                  { nivel: "Documentada (4–5 pilares)", cor: "var(--color-accent)", unlock: "RenovAgro · ABC+ · CRA Verde · Compradores europeus" },
-                  { nivel: "Premium (6 pilares)", cor: "var(--color-accent)", unlock: "FIAGROs · Fundos ESG · Linhas internacionais · IFC" },
-                ].map((l, i) => (
-                  <div key={i} className="flex gap-3 mb-3 last:mb-0">
-                    <div className="w-1 rounded-full shrink-0" style={{ backgroundColor: l.cor, minHeight: 32 }} />
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-wide text-text/70">{l.nivel}</p>
-                      <p className="text-[10px] text-white/40">{l.unlock}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Tab 2: Guia Prático ──────────────────────────── */}
-        {tab === 2 && (() => {
-          const guideSteps = [
-            {
-              n: "01", title: "Monte a vitrine da sua fazenda",
-              desc: "Logo, capa, descrição e localização. É o que o comprador vê primeiro — capriche.",
-              why: "Fazendas com perfil completo passam mais credibilidade e fecham negócios mais rápido.",
-              done: !!(user?.logo && user?.description && user?.location),
-              action: () => go(4), actionLabel: "Editar perfil",
-              items: [
-                { label: "Logo da fazenda", ok: !!user?.logo },
-                { label: "Descrição da produção", ok: !!(user?.description && user.description.length > 10) },
-                { label: "Localização (cidade/estado)", ok: !!user?.location },
-              ],
-            },
-            {
-              n: "02", title: "Cadastre seus lotes de safra",
-              desc: "Cada lote vira um QR rastreável que o comprador escaneia no produto.",
-              why: "Com QR por lote, você prova a origem da sua produção sem depender de palavra — só da tecnologia.",
-              done: lots.length > 0,
-              action: () => go(lots.length === 0 ? 6 : 7), actionLabel: lots.length === 0 ? "Criar primeiro lote" : "Ver lotes",
-              items: [
-                { label: `${lots.length} lote(s) cadastrado(s)`, ok: lots.length > 0 },
-                { label: "Data de plantio declarada", ok: lots.length > 0 && lots.every(l => !!l.date) },
-                { label: "Variedade/cultivar informada", ok: lots.length > 0 && lots.every(l => !!(l.variedade && l.variedade.trim())) },
-                { label: "Destino/comprador declarado", ok: lots.length > 0 && lots.every(l => !!(l.destino && l.destino.trim())) },
-              ],
-            },
-            {
-              n: "03", title: "Declare seu inventário dentro da porteira",
-              desc: "Práticas adotadas, outorga de água, garantia e projeto técnico. Tudo que o satélite não enxerga e o banco exige.",
-              why: "Esses dados valem crédito verde e mostram ao comprador o que você faz de diferente — sem precisar de auditoria externa.",
-              done: !!(user?.praticasSustentaveis && user.praticasSustentaveis.length >= 2 && user?.garantia && user?.projetoTecnico),
-              action: () => setTab(1), actionLabel: "Preencher na Governança",
-              items: [
-                { label: "Bioma declarado", ok: !!(user?.biome && user.biome.trim()) },
-                { label: "Práticas declaradas (≥ 2)", ok: !!(user?.praticasSustentaveis && user.praticasSustentaveis.length >= 2) },
-                { label: "Outorga de uso de água", ok: !!user?.outorgaAgua },
-                { label: "Projeto técnico com eng. agrônomo", ok: !!user?.projetoTecnico },
-                { label: "Garantia declarada", ok: !!(user?.garantia && user.garantia.trim()) },
-              ],
-            },
-            {
-              n: "04", title: "Preencha os documentos cadastrais",
-              desc: "CAR, CCIR, Matrícula, NIRF, CPF/CNPJ e garantia. Obrigatórios em qualquer banco para crédito rural.",
-              why: "Sem CCIR e Matrícula, banco nenhum aprova crédito rural. A garantia (penhor, hipoteca ou aval) é exigida em todos os contratos.",
-              done: !!(user?.car && user?.ccir && user?.matricula && user?.nirf && user?.cnpj && user?.garantia),
-              action: () => go(4), actionLabel: "Ir para perfil",
-              items: [
-                { label: "CAR — Cadastro Ambiental Rural", ok: !!(user?.car && user.car.trim().length > 5) },
-                { label: "CCIR — Certificado de Cadastro de Imóvel Rural", ok: !!(user?.ccir && user.ccir.trim().length > 3) },
-                { label: "Matrícula do imóvel (cartório)", ok: !!(user?.matricula && user.matricula.trim().length > 3) },
-                { label: "NIRF / ITR", ok: !!(user?.nirf && user.nirf.trim().length > 4) },
-                { label: "CPF / CNPJ", ok: !!(user?.cnpj && user.cnpj.trim().length >= 11) },
-                { label: "Garantia declarada (penhor/hipoteca/aval)", ok: !!(user?.garantia && user.garantia.trim()) },
-              ],
-            },
-            {
-              n: "05", title: "Delimite a área dos lotes no mapa",
-              desc: "Marque os vértices da sua propriedade diretamente no mapa satélite.",
-              why: "A área é uma estimativa (erro de 1–3 ha é normal), mas organiza visualmente sua propriedade para compradores.",
-              done: lots.length > 0 && lots.every(l => l.mapPoints && l.mapPoints.length > 2),
-              action: () => go(lots.length === 0 ? 6 : 8), actionLabel: lots.length === 0 ? "Criar lote primeiro" : "Mapear área",
-              items: [
-                { label: "Área mapeada em todos os lotes", ok: lots.length > 0 && lots.every(l => l.mapPoints && l.mapPoints.length > 2) },
-              ],
-            },
-            {
-              n: "06", title: "Adicione fotos dos lotes",
-              desc: "Fotos reais do campo, máquinas, colheita. Evidências que só você tem.",
-              why: "Compradores europeus confiam mais em registros visuais do que em documentos. Fotos valem mais que laudos.",
-              done: lots.length > 0 && lots.every(l => l.photos && l.photos.length > 0),
-              action: () => go(9), actionLabel: "Adicionar fotos",
-              items: [
-                { label: "Fotos em todos os lotes", ok: lots.length > 0 && lots.every(l => l.photos && l.photos.length > 0) },
-              ],
-            },
-          ];
-
-          const totalDone = guideSteps.filter(s => s.done).length;
-          const nextStep = guideSteps.find(s => !s.done);
-
-          return (
-            <div>
-              {/* Barra de progresso geral */}
-              <div className="mb-6 p-4 border border-white/10 rounded-2xl bg-white/2">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-accent">Progresso geral</span>
-                  <span className="text-[10px] font-bold text-white/40">{totalDone}/{guideSteps.length} passos</span>
-                </div>
-                <div className="h-2 bg-white/8 rounded-full overflow-hidden">
-                  <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${(totalDone / guideSteps.length) * 100}%` }} />
-                </div>
-                {nextStep && (
-                  <p className="text-[10px] text-white/40 mt-2">Próximo: <span className="text-text font-bold">{nextStep.title}</span></p>
-                )}
-              </div>
-
-              {/* Passos */}
-              <div className="space-y-4">
-                {guideSteps.map((step, si) => (
-                  <div key={si} className={`border rounded-2xl overflow-hidden transition-colors ${step.done ? "border-accent/30 bg-accent/3" : "border-white/10"}`}>
-                    <div className="p-4">
-                      <div className="flex items-start gap-3">
-                        {/* Número/check */}
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-black text-[10px] ${step.done ? "bg-accent text-bg" : "border border-white/20 text-white/30"}`}>
-                          {step.done ? <Check size={14} /> : step.n}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className={`text-sm font-black uppercase tracking-tight ${step.done ? "text-text" : "text-white/70"}`}>{step.title}</h3>
-                            {step.done && <BadgeCheck size={14} className="text-accent shrink-0" />}
-                          </div>
-                          <p className="text-[11px] text-white/50 leading-relaxed mb-2">{step.desc}</p>
-                          {/* Por que importa */}
-                          <div className="bg-white/4 rounded-xl px-3 py-2 mb-3">
-                            <p className="text-[10px] text-accent font-bold uppercase tracking-widest mb-0.5">Por que vale a pena</p>
-                            <p className="text-[10px] text-white/50 leading-relaxed">{step.why}</p>
-                          </div>
-                          {/* Sub-itens */}
-                          <div className="space-y-1 mb-3">
-                            {step.items.map((it, ii) => (
-                              <div key={ii} className="flex items-center gap-2">
-                                <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 ${it.ok ? "bg-accent/20" : "border border-white/15"}`}>
-                                  {it.ok && <Check size={8} className="text-accent" />}
-                                </div>
-                                <span className={`text-[10px] font-medium ${it.ok ? "text-text/60 line-through" : "text-white/40"}`}>{it.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {/* Botão de ação */}
-                          {!step.done && (
-                            <button onClick={step.action}
-                              className="flex items-center gap-1.5 px-4 py-2 text-[9px] font-black uppercase tracking-widest bg-accent text-bg hover:bg-accent/80 transition-colors rounded-lg">
-                              {step.actionLabel} <ChevronRight size={11} />
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => openEditor(item.key)}
+                            className="text-[8px] font-black uppercase tracking-widest text-accent hover:text-accent/70 transition-colors">
+                            {declared ? "Editar" : "Declarar"}
+                          </button>
+                          {declared && (
+                            <button onClick={() => removePractice(declared.id)}
+                              className="text-[8px] font-black uppercase tracking-widest text-white/30 hover:text-red-400 transition-colors">
+                              Remover
                             </button>
                           )}
                         </div>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Tab 3: Linhas de Crédito ─────────────────────── */}
-        {tab === 3 && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-5">
-              <span className="text-accent">{eligibleCount}</span> de {CREDIT_LINES.length} linhas com pré-requisitos atendidos
-            </p>
-            <div className="space-y-4">
-              {CREDIT_LINES.sort((a, b) => (b.eligible ? 1 : 0) - (a.eligible ? 1 : 0)).map((line, i) => (
-                <div key={i} className={`p-5 border rounded-2xl transition-colors ${line.eligible ? "border-accent/40 bg-accent/3" : "border-white/10"}`}>
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-sm font-black uppercase tracking-tight text-text">{line.name}</span>
-                        {line.eligible && <BadgeCheck size={15} className="text-accent" />}
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">{line.sub}</span>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="font-black text-base text-accent">{line.rate}</div>
-                      <div className="text-[9px] font-bold uppercase tracking-widest text-white/30">{line.limit}</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-white/60 mb-4 leading-relaxed">{line.desc}</p>
-                  <div className="space-y-1.5 mb-4">
-                    {line.reqs.map((req, ri) => (
-                      <div key={ri} className="flex items-center gap-2">
-                        <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${line.met[ri] ? "bg-accent/20" : "border border-white/20"}`}>
-                          {line.met[ri] && <Check size={9} className="text-accent" />}
-                        </div>
-                        <span className={`text-[11px] ${line.met[ri] ? "text-text/80" : "text-white/40"}`}>{req}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between border-t border-white/10 pt-3">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">{line.inst}</span>
-                    <a href={line.href} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-accent hover:underline">
-                      Ver detalhes <ExternalLink size={11} />
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* Disclaimer */}
-            <div className="mt-6 p-4 border border-white/8 rounded-2xl bg-white/2">
-              <p className="text-[10px] text-white/30 leading-relaxed uppercase tracking-widest">
-                Taxas e limites do Plano Safra 2025/2026. Sujeito a alterações. Consulte a instituição financeira de sua preferência para condições exatas.
-              </p>
+                );
+              })}
             </div>
           </div>
-        )}
-
-        {/* ── Tab 4: Relatório ─────────────────────────────── */}
-        {tab === 4 && (
-          <div className="space-y-5">
-            {[
-              {
-                title: "Relatório de Governança",
-                desc: "Score completo, checklist de conformidade e dados da fazenda formatados para apresentar a bancos, fundos e investidores.",
-                icon: Landmark,
-                action: () => guardedReport("Relatório de Governança", () => openGovernancaReport(user, lots, addToast)),
-                label: "Gerar Relatório de Governança",
-                outline: false,
-              },
-              {
-                title: "Autodeclaração EUDR",
-                desc: "Documento de autodeclaração do produtor para fins de organização. Não substitui auditoria ou verificação oficial.",
-                icon: ShieldCheck,
-                action: () => guardedReport("Autodeclaração EUDR", () => { if (user) { openEUDR(user, lots); addToast("Autodeclaração EUDR gerada!"); } }),
-                label: "Gerar Autodeclaração EUDR",
-                outline: true,
-              },
-              {
-                title: "Autodeclaração ESG",
-                desc: "Resumo autodeclarado de práticas e indicadores da propriedade. Útil para apresentação a compradores e parceiros.",
-                icon: FileBarChart,
-                action: () => guardedReport("Autodeclaração ESG", () => { if (user) { openESG(user, lots); addToast("Autodeclaração ESG gerada!"); } }),
-                label: "Gerar Autodeclaração ESG",
-                outline: true,
-              },
-            ].map((r, i) => (
-              <div key={i} className="p-5 border border-white/10 rounded-2xl">
-                <div className="flex gap-4 mb-5">
-                  <r.icon size={28} className="text-accent shrink-0 mt-0.5" />
-                  <div>
-                    <div className="text-sm font-bold uppercase tracking-wide text-text mb-1.5">{r.title}</div>
-                    <div className="text-xs text-white/60 leading-relaxed">{r.desc}</div>
-                  </div>
-                </div>
-                <Btn full small outline={r.outline} onClick={r.action} icon={Download}>{r.label}</Btn>
-              </div>
-            ))}
-
-            <div className="p-4 border border-yellow-500/20 rounded-2xl bg-yellow-500/5">
-              <div className="flex gap-3">
-                <AlertTriangle size={15} className="text-yellow-500 shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-yellow-500 mb-1">Documentação adicional necessária</div>
-                  <div className="text-xs text-white/50 leading-relaxed">
-                    Para solicitar crédito você precisará complementar com: CAR físico, ITR ou escritura, certidões negativas trabalhistas e projeto técnico assinado por engenheiro agrônomo habilitado.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        ))}
       </div>
+
+      {/* Editor modal */}
+      {editing && (() => {
+        const allItems = PRACTICE_CATALOG.flatMap(c => c.items.map(i => ({ ...i, category: c.id })));
+        const item = allItems.find(i => i.key === editing);
+        if (!item) return null;
+        return createPortal(
+          <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+            onClick={closeEditor}>
+            <div onClick={e => e.stopPropagation()}
+              className="w-full max-w-md bg-bg border border-white/15 rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
+              style={{ fontFamily: "var(--font-sans)" }}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-1">Declarar prática</p>
+                  <h3 className="text-base font-black text-text uppercase tracking-tight">{item.name}</h3>
+                </div>
+                <button onClick={closeEditor} className="text-white/40 hover:text-text"><X size={18} /></button>
+              </div>
+
+              <p className="text-[11px] text-white/55 leading-relaxed mb-5">{item.hint}</p>
+
+              <label className="flex items-center gap-3 mb-4 cursor-pointer">
+                <input type="checkbox" checked={draft.active}
+                  onChange={e => setDraft(d => ({ ...d, active: e.target.checked }))}
+                  className="w-5 h-5 accent-accent" />
+                <span className="text-xs font-bold text-text">Adoto essa prática na fazenda</span>
+              </label>
+
+              <div className="mb-4">
+                <label className="block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1">Desde quando? (opcional)</label>
+                <input type="date" value={draft.startDate}
+                  onChange={e => setDraft(d => ({ ...d, startDate: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-[11px] text-text outline-none focus:border-accent/50" />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1">Observação (opcional)</label>
+                <textarea rows={3} value={draft.notes}
+                  maxLength={1000}
+                  onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))}
+                  placeholder="Ex: rotação soja-milho-braquiária desde 2018"
+                  className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-[11px] text-text placeholder:text-white/25 outline-none focus:border-accent/50 resize-none" />
+              </div>
+
+              <div className="mb-5">
+                <label className="block text-[9px] font-black uppercase tracking-widest text-white/40 mb-1">Foto (opcional)</label>
+                {draft.photoUrl ? (
+                  <div className="relative">
+                    <img src={draft.photoUrl} alt="" className="w-full h-40 object-cover rounded-xl border border-white/15" />
+                    <button onClick={() => setDraft(d => ({ ...d, photoUrl: "" }))}
+                      className="absolute top-2 right-2 w-8 h-8 bg-bg/80 backdrop-blur rounded-lg flex items-center justify-center text-white/70 hover:text-red-400">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 w-full py-6 border border-dashed border-white/20 rounded-xl text-white/40 cursor-pointer hover:border-accent/40 hover:text-accent transition-colors">
+                    <Camera size={16} />
+                    <span className="text-[11px] font-bold uppercase tracking-widest">Anexar foto</span>
+                    <input type="file" accept="image/*" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f); }} />
+                  </label>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={closeEditor}
+                  className="flex-1 py-3 border border-white/15 text-white/60 text-[10px] font-black uppercase tracking-widest rounded-xl hover:border-white/30">
+                  Cancelar
+                </button>
+                <button onClick={() => saveDraft(item, item.category)} disabled={saving}
+                  className="flex-1 py-3 bg-accent text-bg text-[10px] font-black uppercase tracking-widest rounded-xl disabled:opacity-50">
+                  {saving ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        );
+      })()}
     </motion.div>
   );
 };
+
 
 // ─────────────────────────────────────────────
 // SPlanos — Pricing & Upgrade
@@ -6054,7 +5428,7 @@ const AppContent = () => {
       case 11: return <SDocs go={go} />;
       case 12: return <SEditLote go={go} />;
       case 13: return <SLotPublico lotId={lotParam!} go={go} />;
-      case 14: return <SCredito go={go} />;
+      case 14: return <SPraticas go={go} />;
       case 15: return <SPlanos go={go} />;
       case 16: return <SVitrine go={go} />;
       default: return <SLanding go={go} />;
