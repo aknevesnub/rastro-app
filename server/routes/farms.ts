@@ -1,8 +1,26 @@
 import { Router } from "express";
+import path from "path";
+import fs from "node:fs";
 import { prisma } from "../db";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
 export const farmsRouter = Router();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Remove campos sensíveis do objeto user antes de serializar
+const stripSecrets = <T extends Record<string, unknown>>(u: T) => {
+  const {
+    password: _p,
+    emailVerifyToken: _v,
+    emailVerifyExpires: _ve,
+    passwordResetToken: _r,
+    passwordResetExpires: _re,
+    tokenInvalidAt: _ti,
+    ...safe
+  } = u;
+  return safe;
+};
 
 const PUBLIC_SELECT = {
   id: true,
@@ -58,8 +76,7 @@ farmsRouter.get("/me", authenticate, async (req: AuthRequest, res) => {
 
     if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
 
-    const { password, ...safe } = user;
-    res.json(safe);
+    res.json(stripSecrets(user));
   } catch {
     res.status(500).json({ error: "Erro interno" });
   }
@@ -67,9 +84,12 @@ farmsRouter.get("/me", authenticate, async (req: AuthRequest, res) => {
 
 // GET /api/farms/:id — perfil público por ID
 farmsRouter.get("/:id", async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: "Fazenda não encontrada" });
+  }
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id },
+    const user = await prisma.user.findFirst({
+      where: { id: req.params.id, isPublic: true },
       select: {
         ...PUBLIC_SELECT,
         lots: {
@@ -112,6 +132,19 @@ farmsRouter.put("/me", authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: "Máximo de 20 produtos" });
     if (Array.isArray(certs) && certs.length > 20)
       return res.status(400).json({ error: "Máximo de 20 certificações" });
+    if (Array.isArray(products) && products.some((p) => typeof p !== "string" || p.length > 80))
+      return res.status(400).json({ error: "Cada produto: texto até 80 caracteres" });
+    if (Array.isArray(certs) && certs.some((c) => typeof c !== "string" || c.length > 80))
+      return res.status(400).json({ error: "Cada certificação: texto até 80 caracteres" });
+    if (area !== undefined && area !== null) {
+      const areaNum = parseFloat(area);
+      if (!Number.isFinite(areaNum) || areaNum < 0 || areaNum > 1000000)
+        return res.status(400).json({ error: "Área inválida (0–1.000.000 ha)" });
+    }
+    // Limita tamanho serializado dos transforms (anti-DoS via JSON enorme)
+    const tooBig = (j: unknown) => j !== null && j !== undefined && JSON.stringify(j).length > 4096;
+    if (tooBig(logoTransform) || tooBig(coverTransform))
+      return res.status(400).json({ error: "Transform de imagem excede o limite" });
 
     const user = await prisma.user.update({
       where: { id: req.userId },
@@ -148,17 +181,50 @@ farmsRouter.put("/me", authenticate, async (req: AuthRequest, res) => {
       }
     }
 
-    const { password, ...safe } = user;
-    res.json(safe);
+    res.json(stripSecrets(user));
   } catch {
     res.status(500).json({ error: "Erro interno" });
   }
 });
 
-// DELETE /api/farms/me — LGPD: apagar conta e todos os dados
+// DELETE /api/farms/me — LGPD: apagar conta + arquivos do disco
 farmsRouter.delete("/me", authenticate, async (req: AuthRequest, res) => {
   try {
+    // Coleta arquivos antes do cascade
+    const docs = await prisma.userDocument.findMany({
+      where: { userId: req.userId },
+      select: { url: true },
+    });
+    const photos = await prisma.lotPhoto.findMany({
+      where: { lot: { userId: req.userId } },
+      select: { url: true },
+    });
+    const practices = await prisma.userPractice.findMany({
+      where: { userId: req.userId, photoUrl: { not: null } },
+      select: { photoUrl: true },
+    });
+
     await prisma.user.delete({ where: { id: req.userId } });
+
+    // Best-effort: remove arquivos do disco com proteção contra path traversal
+    const uploadsDir = path.resolve(process.cwd(), "uploads");
+    const SAFE_NAME = /^[0-9]+-[a-z0-9]+\.[a-z0-9]+$/i;
+    const allUrls = [
+      ...docs.map((d) => d.url),
+      ...photos.map((p) => p.url),
+      ...practices.map((p) => p.photoUrl).filter((u): u is string => !!u),
+    ];
+    for (const url of allUrls) {
+      try {
+        const filename = path.basename(new URL(url).pathname);
+        if (!SAFE_NAME.test(filename)) continue;
+        const filePath = path.resolve(uploadsDir, filename);
+        if (filePath.startsWith(uploadsDir + path.sep)) {
+          fs.unlink(filePath, () => {});
+        }
+      } catch { /* url externa */ }
+    }
+
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: "Erro interno" });

@@ -17,19 +17,46 @@ export const token = {
 
 // ── Fetch wrapper ─────────────────────────────────────────────────────────────
 
+const DEFAULT_TIMEOUT_MS = 20_000;
+
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<T> {
   const tk = token.get();
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(tk ? { Authorization: `Bearer ${tk}` } : {}),
-      ...(options.headers ?? {}),
-    },
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      signal: ctrl.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(tk ? { Authorization: `Bearer ${tk}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error("Tempo limite excedido. Verifique sua conexão.");
+    }
+    throw new Error("Falha de rede. Verifique sua conexão.");
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res.status === 401) {
+    // Token expirado/inválido: limpa e força re-login (exceto rotas públicas/login/register)
+    const isAuthRoute = path.includes("/api/auth/login") || path.includes("/api/auth/register") ||
+      path.includes("/api/auth/forgot-password") || path.includes("/api/auth/reset-password") ||
+      path.includes("/api/auth/verify-email");
+    if (!isAuthRoute && tk) {
+      token.clear();
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -59,6 +86,32 @@ export const auth = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+
+  logout: () =>
+    request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+
+  forgotPassword: (email: string) =>
+    request<{ ok: boolean }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (resetToken: string, password: string) =>
+    request<{ ok: boolean }>("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token: resetToken, password }),
+    }),
+
+  verifyEmail: (verifyToken: string) =>
+    request<{ ok: boolean }>(`/api/auth/verify-email?token=${encodeURIComponent(verifyToken)}`),
+
+  resendVerification: () =>
+    request<{ ok: boolean; alreadyVerified?: boolean }>("/api/auth/resend-verification", {
+      method: "POST",
+    }),
+
+  deleteAccount: () =>
+    request<{ ok: boolean }>("/api/auth/account", { method: "DELETE" }),
 };
 
 // ── Farms ─────────────────────────────────────────────────────────────────────
@@ -148,6 +201,14 @@ export const documents = {
     expiresAt?: string | null;
     notes?: string | null;
   }): Promise<ApiDocument> => {
+    // Validação client-side antes do upload (UX rápida; servidor faz validação real)
+    const MAX = 10 * 1024 * 1024;
+    if (data.file.size > MAX) throw new Error("Arquivo excede 10 MB");
+    const ALLOWED = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+    if (!ALLOWED.includes(data.file.type)) {
+      throw new Error("Tipo de arquivo não permitido (PDF, JPEG, PNG ou WebP)");
+    }
+
     const fd = new FormData();
     fd.append("file", data.file);
     fd.append("type", data.type);
@@ -155,11 +216,22 @@ export const documents = {
     if (data.expiresAt) fd.append("expiresAt", data.expiresAt);
     if (data.notes) fd.append("notes", data.notes);
     const tk = token.get();
-    const res = await fetch(`${BASE}/api/documents`, {
-      method: "POST",
-      headers: tk ? { Authorization: `Bearer ${tk}` } : {},
-      body: fd,
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60_000);
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/documents`, {
+        method: "POST",
+        headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+        body: fd,
+        signal: ctrl.signal,
+      });
+    } catch (err) {
+      if ((err as Error).name === "AbortError") throw new Error("Upload demorou demais. Tente novamente.");
+      throw new Error("Falha de rede no upload. Verifique sua conexão.");
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ?? "Erro no upload");
@@ -181,14 +253,32 @@ export const documents = {
 
 export const photos = {
   upload: async (file: File): Promise<string> => {
+    const MAX = 5 * 1024 * 1024;
+    if (file.size > MAX) throw new Error("Imagem excede 5 MB");
+    const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
+    if (!ALLOWED.includes(file.type)) {
+      throw new Error("Tipo de imagem não permitido (JPEG, PNG ou WebP)");
+    }
+
     const fd = new FormData();
     fd.append("photo", file);
     const tk = token.get();
-    const res = await fetch(`${BASE}/api/photos`, {
-      method: "POST",
-      headers: tk ? { Authorization: `Bearer ${tk}` } : {},
-      body: fd,
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60_000);
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/photos`, {
+        method: "POST",
+        headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+        body: fd,
+        signal: ctrl.signal,
+      });
+    } catch (err) {
+      if ((err as Error).name === "AbortError") throw new Error("Upload demorou demais. Tente novamente.");
+      throw new Error("Falha de rede no upload. Verifique sua conexão.");
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ?? "Erro no upload");

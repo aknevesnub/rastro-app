@@ -21,6 +21,32 @@ import {
 } from "lucide-react";
 
 // ─────────────────────────────────────────────
+// Hooks utilitários
+// ─────────────────────────────────────────────
+
+// Fecha overlay/modal com tecla ESC
+function useEscapeKey(handler: () => void, enabled = true) {
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handler();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handler, enabled]);
+}
+
+// Bloqueia scroll do body enquanto modal aberto
+function useBodyScrollLock(enabled = true) {
+  useEffect(() => {
+    if (!enabled) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [enabled]);
+}
+
+// ─────────────────────────────────────────────
 // i18n
 // ─────────────────────────────────────────────
 
@@ -776,6 +802,10 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = () => {
+    // Best-effort: invalida sessão no servidor antes de limpar local
+    if (API_ENABLED && api.token.get()) {
+      api.auth.logout().catch(() => { /* falha silenciosa: prossegue logout local */ });
+    }
     setUser(null);
     localStorage.removeItem("rastro_user");
     if (API_ENABLED) api.token.clear();
@@ -785,7 +815,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const deleteAccount = () => {
     if (API_ENABLED && api.token.get()) {
       // Tenta apagar no servidor (best-effort; falha silenciosa não bloqueia)
-      api.farms.deleteAccount().catch(() => {});
+      api.auth.deleteAccount().catch(() => {});
       api.token.clear();
     }
     ["rastro_user", "rastro_lots", "rastro_events", "rastro_lgpd", "rastro_proposals"].forEach(k => localStorage.removeItem(k));
@@ -1365,17 +1395,30 @@ const SidebarNav = ({ active, onNav, onLogout }: { active: number; onNav: (s: nu
   );
 };
 
-const Field = ({ label, placeholder, tall, type = "text", value, onChange, error }: { label: string; placeholder?: string; tall?: boolean; type?: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void; error?: string }) => (
+// Tamanhos máximos por tipo de input — alinhados com validações do servidor
+const FIELD_MAX_LENGTH: Record<string, number> = {
+  email: 254,
+  password: 128,
+  tel: 30,
+  url: 500,
+  number: 12,
+  text: 200,
+};
+
+const Field = ({ label, placeholder, tall, type = "text", value, onChange, error, maxLength, autoComplete }: { label: string; placeholder?: string; tall?: boolean; type?: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void; error?: string; maxLength?: number; autoComplete?: string }) => {
+  const ml = maxLength ?? (tall ? 2000 : FIELD_MAX_LENGTH[type] ?? 200);
+  return (
   <div className="mb-5">
     <label className="block text-[10px] font-bold uppercase tracking-widest text-accent mb-2">{label}</label>
     {tall ? (
-      <textarea value={value} onChange={onChange} className={`w-full px-4 py-3 border bg-transparent focus:bg-white/5 focus:ring-1 focus:ring-accent transition-all text-sm text-text resize-none h-24 rounded-2xl placeholder-white/30 ${error ? "border-red-500" : "border-white/20 focus:border-accent"}`} placeholder={placeholder} />
+      <textarea value={value} onChange={onChange} maxLength={ml} className={`w-full px-4 py-3 border bg-transparent focus:bg-white/5 focus:ring-1 focus:ring-accent transition-all text-sm text-text resize-none h-24 rounded-2xl placeholder-white/30 ${error ? "border-red-500" : "border-white/20 focus:border-accent"}`} placeholder={placeholder} />
     ) : (
-      <input type={type} value={value} onChange={onChange} className={`w-full px-4 py-3 border bg-transparent focus:bg-white/5 focus:ring-1 focus:ring-accent transition-all text-sm text-text rounded-2xl placeholder-white/30 ${error ? "border-red-500" : "border-white/20 focus:border-accent"}`} placeholder={placeholder} />
+      <input type={type} value={value} onChange={onChange} maxLength={ml} autoComplete={autoComplete} className={`w-full px-4 py-3 border bg-transparent focus:bg-white/5 focus:ring-1 focus:ring-accent transition-all text-sm text-text rounded-2xl placeholder-white/30 ${error ? "border-red-500" : "border-white/20 focus:border-accent"}`} placeholder={placeholder} />
     )}
     {error && <p className="text-[10px] text-red-400 mt-1 font-bold uppercase tracking-widest">{error}</p>}
   </div>
-);
+  );
+};
 
 const Logo = ({ className = "", height = 38 }: { className?: string; height?: number }) => {
   const { theme } = useContext(ThemeContext);
@@ -1448,6 +1491,8 @@ const LogoCropEditor = ({ src, transform, onSave, onClose }: {
   const [y, setY] = useState(transform?.y ?? 0);
   const dragStart = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
   const PREVIEW = 280;
+  useEscapeKey(onClose);
+  useBodyScrollLock();
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -1572,6 +1617,8 @@ const FarmPinDrawer = ({ initialPin, onSave, onClose }: {
   const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string; type?: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
+  useEscapeKey(onClose);
+  useBodyScrollLock();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1666,6 +1713,11 @@ const FarmPinDrawer = ({ initialPin, onSave, onClose }: {
     const t = setTimeout(() => { handleSearch(searchQuery); }, 400);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  // Aborta fetch pendente ao desmontar
+  useEffect(() => {
+    return () => { searchAbortRef.current?.abort(); };
+  }, []);
 
   const HEADER_H = 56;
   const SEARCH_H = 44;
@@ -1768,6 +1820,8 @@ const MapDrawer = ({ name, initialPoints, onSave, onClose }: {
   const [searchResults, setSearchResults] = useState<{ display_name: string; lat: string; lon: string; type?: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
+  useEscapeKey(onClose);
+  useBodyScrollLock();
 
   // ── Bug 1 fix: inicializa o mapa e registra click SEM chamar setPoints dentro de updater ──
   useEffect(() => {
@@ -1874,6 +1928,11 @@ const MapDrawer = ({ name, initialPoints, onSave, onClose }: {
     const t = setTimeout(() => { handleSearch(searchQuery); }, 400);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  // Aborta fetch pendente ao desmontar
+  useEffect(() => {
+    return () => { searchAbortRef.current?.abort(); };
+  }, []);
 
   // Alturas fixas do header (56px) + busca (44px) + instrução (32px) + controles (56px)
   // O mapa ocupa o restante. Layout absoluto é mais confiável que flex no portal.
@@ -2321,7 +2380,9 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   const [backendFarms, setBackendFarms] = useState<VitrineEntry[]>([]);
   useEffect(() => {
     if (!API_ENABLED) return;
+    let alive = true;
     api.farms.list().then(list => {
+      if (!alive) return;
       // Coords padrão por bioma (centro aproximado) — usadas até termos lat/lng no schema
       const BIOME_DEFAULT_COORDS: Record<string, [number, number]> = {
         "cerrado":         [-15.77, -47.92],
@@ -2358,6 +2419,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
       });
       setBackendFarms(entries);
     }).catch(() => { /* silencioso */ });
+    return () => { alive = false; };
   }, []);
 
   const allEntries = useMemo(() => {
@@ -3354,6 +3416,28 @@ const SLogin = ({ go }: { go: (s: number) => void }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSending, setForgotSending] = useState(false);
+
+  const handleForgot = async () => {
+    if (!forgotEmail.trim()) { addToast("Informe seu e-mail", "error"); return; }
+    if (!API_ENABLED) {
+      addToast("Recuperação de senha exige conexão com o servidor", "error");
+      return;
+    }
+    setForgotSending(true);
+    try {
+      await api.auth.forgotPassword(forgotEmail.trim());
+      addToast("Se o e-mail existir, enviamos um link de redefinição.", "success");
+      setForgotOpen(false);
+      setForgotEmail("");
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : "Erro ao enviar", "error");
+    } finally {
+      setForgotSending(false);
+    }
+  };
 
   const handleLogin = async () => {
     setError("");
@@ -3404,16 +3488,45 @@ const SLogin = ({ go }: { go: (s: number) => void }) => {
             <h2 className="font-black text-4xl uppercase tracking-tighter text-text leading-none mb-2">Bem-vindo<br /><span className="text-stroke">de volta</span></h2>
             <p className="text-xs text-white/60 uppercase tracking-widest mt-4">Acesse sua fazenda</p>
           </div>
-          <Field label="E-mail" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" type="email" />
-          <Field label="Senha" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" type="password" />
+          <Field label="E-mail" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" type="email" autoComplete="email" />
+          <Field label="Senha" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" type="password" autoComplete="current-password" />
           {error && <p className="text-xs text-red-400 font-bold uppercase tracking-widest mb-4 -mt-2">{error}</p>}
-          <div className="mb-8" />
+          <div className="text-right mb-6 -mt-3">
+            <button
+              type="button"
+              onClick={() => { setForgotEmail(email); setForgotOpen(true); }}
+              className="text-[10px] font-bold uppercase tracking-widest text-accent/80 hover:text-accent transition-colors"
+            >
+              Esqueci minha senha
+            </button>
+          </div>
           <Btn full onClick={handleLogin}>Entrar</Btn>
           <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 text-center mt-8">
             Não tem conta? <span onClick={() => go(1)} className="text-accent cursor-pointer ml-2">Cadastre-se</span>
           </p>
         </div>
       </div>
+
+      {forgotOpen && createPortal(
+        <div className="fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !forgotSending && setForgotOpen(false)}>
+          <div className="bg-bg border border-white/10 rounded-3xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="font-black uppercase tracking-tighter text-2xl text-text mb-2">Recuperar senha</h3>
+            <p className="text-[10px] uppercase tracking-widest text-white/50 mb-5">Enviamos um link para redefinir sua senha</p>
+            <Field label="Seu e-mail" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="seu@email.com" type="email" autoComplete="email" />
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => setForgotOpen(false)} disabled={forgotSending}
+                className="flex-1 px-4 py-3 border border-white/15 text-white/60 text-[10px] font-bold uppercase tracking-widest rounded-2xl hover:bg-white/5 transition-colors disabled:opacity-40">
+                Cancelar
+              </button>
+              <Btn full onClick={handleForgot} disabled={forgotSending}>
+                {forgotSending ? "Enviando..." : "Enviar link"}
+              </Btn>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </motion.div>
   );
 };
@@ -3997,7 +4110,11 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
 
   useEffect(() => {
     if (isViewingOther && viewingFarmId) {
-      api.farms.getById(viewingFarmId).then(setViewedFarm).catch(() => setViewedFarm(null));
+      let alive = true;
+      api.farms.getById(viewingFarmId)
+        .then(f => { if (alive) setViewedFarm(f); })
+        .catch(() => { if (alive) setViewedFarm(null); });
+      return () => { alive = false; };
     } else {
       setViewedFarm(null);
       setViewedLots([]);
@@ -4023,9 +4140,11 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   useEffect(() => {
     if (isViewingOther) return;
     if (!API_ENABLED || !api.token.get()) { setMyPractices([]); return; }
+    let alive = true;
     api.practices.list()
-      .then(list => setMyPractices(list.filter(p => p.active)))
-      .catch(() => setMyPractices([]));
+      .then(list => { if (alive) setMyPractices(list.filter(p => p.active)); })
+      .catch(() => { if (alive) setMyPractices([]); });
+    return () => { alive = false; };
   }, [isViewingOther]);
   const displayPractices = isViewingOther
     ? (viewedFarm?.practices ?? [])
@@ -4043,6 +4162,18 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
     : lots.flatMap(l =>
         (l.photos || []).map((src, pi) => ({ src, lotName: l.name, crop: l.crop, transform: l.photoTransforms?.[pi] }))
       );
+
+  // Teclas: ESC fecha lightbox; setas navegam entre fotos
+  useEffect(() => {
+    if (galleryIdx === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setGalleryIdx(null);
+      else if (e.key === "ArrowLeft" && galleryIdx > 0) setGalleryIdx((i) => (i ?? 1) - 1);
+      else if (e.key === "ArrowRight" && galleryIdx < allPhotos.length - 1) setGalleryIdx((i) => (i ?? 0) + 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [galleryIdx, allPhotos.length]);
 
   const products = displayProducts.length
     ? displayProducts
@@ -4780,6 +4911,14 @@ const SGaleria = ({ go }: { go: (s: number) => void }) => {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ESC fecha lightbox da galeria
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
+
   const allPhotos = lots.flatMap(l => (l.photos || []).map((p, i) => ({ photo: p, transform: l.photoTransforms?.[i] ?? { scale: 1, x: 0, y: 0 }, lotName: l.name, lotId: l.id })));
   const shown = selectedLot === "all" ? allPhotos : allPhotos.filter(p => p.lotId === selectedLot);
 
@@ -5334,15 +5473,25 @@ const SPraticas = ({ go }: { go: (s: number) => void }) => {
 
   const apiOn = API_ENABLED && !!api.token.get();
 
+  // ESC fecha modal de documento
+  useEffect(() => {
+    if (!docModal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !docSaving) setDocModal(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [docModal, docSaving]);
+
   useEffect(() => {
     if (!apiOn) { setLoading(false); return; }
+    let alive = true;
     Promise.all([
       api.practices.list().catch(() => [] as api.ApiPractice[]),
       api.documents.list().catch(() => [] as api.ApiDocument[]),
     ])
-      .then(([ps, ds]) => { setPractices(ps); setDocuments(ds); })
-      .catch(() => addToast("Não foi possível carregar seus dados", "error"))
-      .finally(() => setLoading(false));
+      .then(([ps, ds]) => { if (!alive) return; setPractices(ps); setDocuments(ds); })
+      .catch(() => { if (alive) addToast("Não foi possível carregar seus dados", "error"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, [apiOn]);
 
   const byKey = useMemo(() => {
@@ -5951,15 +6100,118 @@ const SPlanos = ({ go }: { go: (s: number) => void }) => {
 };
 
 // ─────────────────────────────────────────────
+// Reset password / Verify email (acessadas via link de e-mail)
+// ─────────────────────────────────────────────
+
+const SResetPassword = ({ token, onDone }: { token: string; onDone: () => void }) => {
+  const { addToast } = useContext(AppContext);
+  const [pwd, setPwd] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    if (pwd.length < 6) { addToast("Senha precisa de ao menos 6 caracteres", "error"); return; }
+    if (pwd !== pwd2) { addToast("As senhas não conferem", "error"); return; }
+    setBusy(true);
+    try {
+      await api.auth.resetPassword(token, pwd);
+      setDone(true);
+      addToast("Senha redefinida! Faça login.", "success");
+      setTimeout(onDone, 1200);
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : "Erro ao redefinir senha", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6">
+      <div className="max-w-sm w-full">
+        <Logo className="mb-8 mx-auto" />
+        <h2 className="font-black text-3xl uppercase tracking-tighter text-text mb-2">Nova senha</h2>
+        <p className="text-[10px] uppercase tracking-widest text-white/50 mb-6">
+          {done ? "Senha redefinida com sucesso" : "Escolha uma senha nova para sua conta"}
+        </p>
+        {!done && (
+          <>
+            <Field label="Nova senha" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="Mínimo 6 caracteres" type="password" autoComplete="new-password" />
+            <Field label="Confirmar senha" value={pwd2} onChange={e => setPwd2(e.target.value)} placeholder="Repita a senha" type="password" autoComplete="new-password" />
+            <Btn full onClick={submit} disabled={busy}>{busy ? "Redefinindo..." : "Redefinir senha"}</Btn>
+            <button onClick={onDone} className="text-[10px] font-bold uppercase tracking-widest text-white/40 mt-6 w-full text-center hover:text-white/60 transition-colors">
+              Cancelar
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SVerifyEmail = ({ token, onDone }: { token: string; onDone: () => void }) => {
+  const [status, setStatus] = useState<"checking" | "ok" | "error">("checking");
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    api.auth.verifyEmail(token)
+      .then(() => { if (alive) { setStatus("ok"); setMsg("E-mail confirmado!"); } })
+      .catch((e) => {
+        if (!alive) return;
+        setStatus("error");
+        setMsg(e instanceof Error ? e.message : "Token inválido ou expirado");
+      });
+    return () => { alive = false; };
+  }, [token]);
+
+  return (
+    <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6">
+      <div className="max-w-sm w-full text-center">
+        <Logo className="mb-8 mx-auto" />
+        {status === "checking" && <p className="text-xs uppercase tracking-widest text-white/60">Confirmando...</p>}
+        {status === "ok" && (
+          <>
+            <CheckCircle2 size={48} className="text-accent mx-auto mb-4" />
+            <h2 className="font-black text-2xl uppercase tracking-tighter text-text mb-2">{msg}</h2>
+            <p className="text-[10px] uppercase tracking-widest text-white/50 mb-8">Sua conta está pronta para uso</p>
+            <Btn full onClick={onDone}>Continuar</Btn>
+          </>
+        )}
+        {status === "error" && (
+          <>
+            <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
+            <h2 className="font-black text-2xl uppercase tracking-tighter text-text mb-2">Não foi possível confirmar</h2>
+            <p className="text-xs text-white/60 mb-8">{msg}</p>
+            <Btn full onClick={onDone}>Voltar</Btn>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────
 // App Shell
 // ─────────────────────────────────────────────
 
 const AppContent = () => {
-  // Detect ?lot=ID in URL for QR deep-link
+  // Detect ?lot=ID, ?reset=token, ?verify=token in URL
   const [lotParam] = useState<string | null>(() => {
-    const p = new URLSearchParams(window.location.search).get("lot");
-    if (p) window.history.replaceState({}, "", window.location.pathname); // clean URL
+    const sp = new URLSearchParams(window.location.search);
+    const p = sp.get("lot");
+    if (p) window.history.replaceState({}, "", window.location.pathname);
     return p;
+  });
+  const [resetToken, setResetToken] = useState<string | null>(() => {
+    const t = new URLSearchParams(window.location.search).get("reset");
+    if (t) window.history.replaceState({}, "", window.location.pathname);
+    return t;
+  });
+  const [verifyToken, setVerifyToken] = useState<string | null>(() => {
+    const t = new URLSearchParams(window.location.search).get("verify");
+    if (t) window.history.replaceState({}, "", window.location.pathname);
+    return t;
   });
 
   const [s, setS] = useState(() => lotParam ? 13 : 0);
@@ -6001,6 +6253,24 @@ const AppContent = () => {
       default: return <SLanding go={go} />;
     }
   };
+
+  // Telas especiais por URL (link de e-mail)
+  if (resetToken) {
+    return (
+      <div data-theme={theme} className="font-sans text-text antialiased bg-bg selection:bg-accent selection:text-bg">
+        <ToastContainer />
+        <SResetPassword token={resetToken} onDone={() => { setResetToken(null); setS(2); }} />
+      </div>
+    );
+  }
+  if (verifyToken) {
+    return (
+      <div data-theme={theme} className="font-sans text-text antialiased bg-bg selection:bg-accent selection:text-bg">
+        <ToastContainer />
+        <SVerifyEmail token={verifyToken} onDone={() => { setVerifyToken(null); setS(user ? 3 : 2); }} />
+      </div>
+    );
+  }
 
   return (
     <div data-theme={theme} className="font-sans text-text antialiased bg-bg selection:bg-accent selection:text-bg">

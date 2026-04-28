@@ -1,8 +1,27 @@
 import { Router } from "express";
+import path from "path";
+import fs from "node:fs";
 import { prisma } from "../db";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
 export const practicesRouter = Router();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Apaga arquivo do disco com proteção contra path traversal
+const safeDeleteFile = (url: string | null | undefined) => {
+  if (!url) return;
+  try {
+    const filename = path.basename(new URL(url).pathname);
+    const SAFE_NAME = /^[0-9]+-[a-z0-9]+\.[a-z0-9]+$/i;
+    if (!SAFE_NAME.test(filename)) return;
+    const uploadsDir = path.resolve(process.cwd(), "uploads");
+    const filePath = path.resolve(uploadsDir, filename);
+    if (filePath.startsWith(uploadsDir + path.sep)) {
+      fs.unlink(filePath, () => {});
+    }
+  } catch { /* url externa */ }
+};
 
 // GET /api/practices — todas as práticas declaradas pelo usuário autenticado
 practicesRouter.get("/", authenticate, async (req: AuthRequest, res) => {
@@ -66,6 +85,9 @@ practicesRouter.post("/", authenticate, async (req: AuthRequest, res) => {
 
 // PUT /api/practices/:id — atualizar
 practicesRouter.put("/:id", authenticate, async (req: AuthRequest, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: "Prática não encontrada" });
+  }
   try {
     const existing = await prisma.userPractice.findFirst({
       where: { id: req.params.id, userId: req.userId },
@@ -78,6 +100,11 @@ practicesRouter.put("/:id", authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: "name: máx 120 caracteres" });
     if (notes !== undefined && String(notes ?? "").length > 1000)
       return res.status(400).json({ error: "notes: máx 1000 caracteres" });
+
+    // Se foto antiga foi substituída, apaga do disco
+    if (photoUrl !== undefined && existing.photoUrl && existing.photoUrl !== photoUrl) {
+      safeDeleteFile(existing.photoUrl);
+    }
 
     const updated = await prisma.userPractice.update({
       where: { id: req.params.id },
@@ -98,12 +125,16 @@ practicesRouter.put("/:id", authenticate, async (req: AuthRequest, res) => {
 
 // DELETE /api/practices/:id
 practicesRouter.delete("/:id", authenticate, async (req: AuthRequest, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: "Prática não encontrada" });
+  }
   try {
     const existing = await prisma.userPractice.findFirst({
       where: { id: req.params.id, userId: req.userId },
     });
     if (!existing) return res.status(404).json({ error: "Prática não encontrada" });
 
+    safeDeleteFile(existing.photoUrl);
     await prisma.userPractice.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
   } catch {

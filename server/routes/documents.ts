@@ -148,6 +148,10 @@ documentsRouter.post(
 
 // PUT /api/documents/:id — editar metadados (não troca arquivo)
 documentsRouter.put("/:id", authenticate, async (req: AuthRequest, res) => {
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(req.params.id)) {
+    return res.status(404).json({ error: "Documento não encontrado" });
+  }
   try {
     const existing = await prisma.userDocument.findFirst({
       where: { id: req.params.id, userId: req.userId },
@@ -178,17 +182,30 @@ documentsRouter.put("/:id", authenticate, async (req: AuthRequest, res) => {
 
 // DELETE /api/documents/:id — remove arquivo do disco e o registro
 documentsRouter.delete("/:id", authenticate, async (req: AuthRequest, res) => {
+  // Valida formato UUID antes de consultar
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRe.test(req.params.id)) {
+    return res.status(404).json({ error: "Documento não encontrado" });
+  }
   try {
     const existing = await prisma.userDocument.findFirst({
       where: { id: req.params.id, userId: req.userId },
     });
     if (!existing) return res.status(404).json({ error: "Documento não encontrado" });
 
-    // Tenta apagar arquivo físico (best-effort)
+    // Tenta apagar arquivo físico (best-effort, com proteção contra path traversal)
     try {
       const filename = path.basename(new URL(existing.url).pathname);
-      const filePath = path.join(process.cwd(), "uploads", filename);
-      fs.unlink(filePath, () => {});
+      // Whitelist: apenas filenames gerados pela rota de upload (timestamp-rand.ext)
+      const SAFE_NAME = /^[0-9]+-[a-z0-9]+\.[a-z0-9]+$/i;
+      if (SAFE_NAME.test(filename)) {
+        const uploadsDir = path.resolve(process.cwd(), "uploads");
+        const filePath = path.resolve(uploadsDir, filename);
+        // Confere que o caminho resolvido está DENTRO de uploads (defesa em profundidade)
+        if (filePath.startsWith(uploadsDir + path.sep)) {
+          fs.unlink(filePath, () => {});
+        }
+      }
     } catch { /* url inválida — só apaga o registro */ }
 
     await prisma.userDocument.delete({ where: { id: req.params.id } });

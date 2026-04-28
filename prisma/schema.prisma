@@ -24,6 +24,13 @@ model User {
   coverTransform  Json?          @map("cover_transform")
   plan            String         @default("free")
   isPublic        Boolean        @default(true) @map("is_public")
+  trialEndsAt     DateTime?      @map("trial_ends_at") @db.Timestamptz(6)
+  emailVerified   Boolean        @default(false) @map("email_verified")
+  emailVerifyToken String?       @map("email_verify_token")
+  emailVerifyExpires DateTime?   @map("email_verify_expires") @db.Timestamptz(6)
+  passwordResetToken String?     @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires") @db.Timestamptz(6)
+  tokenInvalidAt  DateTime?      @map("token_invalid_at") @db.Timestamptz(6)
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
   documents       UserDocument[]
