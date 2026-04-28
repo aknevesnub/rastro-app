@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
+import { BrowserRouter, useLocation, useNavigate, useParams } from "react-router-dom";
 import { paymentService } from "./services/payment";
 import type { PlanTier } from "./services/payment";
 import * as api from "./services/api";
@@ -2332,6 +2333,7 @@ const VITRINE_DEMO: VitrineEntry[] = [
 ];
 
 const SVitrine = ({ go }: { go: (s: number) => void }) => {
+  const navigate = useNavigate();
   const { user, sendProposal, addToast, setViewingFarmId } = useContext(AppContext);
   const isComprador = user?.role && user.role !== "produtor";
   const [proposalTarget, setProposalTarget] = useState<VitrineEntry | null>(null);
@@ -2587,7 +2589,11 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0">
                   {activeEntry.isReal && (
-                    <button onClick={() => { setViewingFarmId(activeEntry.id ?? null); go(5); }} style={{ background: "#E0FF22", color: "#111" }}
+                    <button onClick={() => {
+                      setViewingFarmId(activeEntry.id ?? null);
+                      if (activeEntry.id) navigate(`/fazenda/${encodeURIComponent(activeEntry.id)}`);
+                      else go(5);
+                    }} style={{ background: "#E0FF22", color: "#111" }}
                       className="py-1.5 px-3 text-[8px] font-black uppercase tracking-widest rounded-lg whitespace-nowrap">
                       Ver perfil →
                     </button>
@@ -4985,7 +4991,7 @@ const SGaleria = ({ go }: { go: (s: number) => void }) => {
 
 // ─── Tela pública do lote (acessada via QR) ───
 const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) => {
-  const appUrl = window.location.origin + window.location.pathname;
+  const appUrl = window.location.origin + "/";
   const [apiLot, setApiLot] = useState<import("./services/api").ApiLotPublic | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -5064,7 +5070,7 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
   })();
   const totalArea = totalAreaSource;
   const lotPublicId = apiLot ? apiLot.id : (localLot?.apiId || lot.id);
-  const lotUrl = `${appUrl}?lot=${lotPublicId}`;
+  const lotUrl = `${window.location.origin}/lote/${encodeURIComponent(lotPublicId)}`;
   const st = LOT_STATUS.find(s => s.key === lot.status);
 
   const handleShare = async () => {
@@ -5212,10 +5218,10 @@ const SQRCode = ({ go }: { go: (s: number) => void }) => {
   const lot = lots.find(l => l.id === selectedId) || lots[lots.length - 1];
   const effectiveApiId = lot?.apiId || syncedApiId;
 
-  // URL aponta para o próprio app com ?lot=ID
+  // URL aponta para o próprio app em /lote/:id (path SEO-friendly)
   // Prefere apiId (UUID do backend) — o lot.id local é Date.now() e não funciona em outros dispositivos
-  const appBase = window.location.origin + window.location.pathname;
-  const qrValue = lot ? `${appBase}?lot=${effectiveApiId || lot.id}` : appBase;
+  const appBase = window.location.origin;
+  const qrValue = lot ? `${appBase}/lote/${encodeURIComponent(effectiveApiId || lot.id)}` : appBase;
   const shareTitle = lot ? `${lot.name} — ${user?.farmName}` : user?.farmName || "Fazenda";
 
   // Reseta sync quando trocar de lote
@@ -6195,14 +6201,41 @@ const SVerifyEmail = ({ token, onDone }: { token: string; onDone: () => void }) 
 // App Shell
 // ─────────────────────────────────────────────
 
+// Mapeia números de tela ↔ paths de URL (para SEO/links diretos)
+const SCREEN_PATHS: Record<number, string> = {
+  0: "/",
+  1: "/cadastro",
+  2: "/login",
+  3: "/app",
+  4: "/app/perfil",
+  5: "/app/vitrine",
+  6: "/app/lotes/novo",
+  7: "/app/lotes",
+  8: "/app/mapa",
+  9: "/app/galeria",
+  10: "/app/qr",
+  11: "/app/documentos",
+  12: "/app/lotes/editar",
+  // 13 (SLotPublico) é dinâmico → /lote/:id
+  14: "/app/praticas",
+  15: "/planos",
+  16: "/vitrine",
+};
+
+const pathToScreen = (pathname: string): number => {
+  if (/^\/lote\//.test(pathname)) return 13;
+  if (/^\/fazenda\//.test(pathname)) return 5;
+  for (const [k, v] of Object.entries(SCREEN_PATHS)) {
+    if (v === pathname) return parseInt(k, 10);
+  }
+  return 0;
+};
+
 const AppContent = () => {
-  // Detect ?lot=ID, ?reset=token, ?verify=token in URL
-  const [lotParam] = useState<string | null>(() => {
-    const sp = new URLSearchParams(window.location.search);
-    const p = sp.get("lot");
-    if (p) window.history.replaceState({}, "", window.location.pathname);
-    return p;
-  });
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Detect ?reset=token, ?verify=token in URL (links de e-mail — backward compat)
   const [resetToken, setResetToken] = useState<string | null>(() => {
     const t = new URLSearchParams(window.location.search).get("reset");
     if (t) window.history.replaceState({}, "", window.location.pathname);
@@ -6214,22 +6247,52 @@ const AppContent = () => {
     return t;
   });
 
-  const [s, setS] = useState(() => lotParam ? 13 : 0);
-  const { user, logout } = useContext(AppContext);
+  // Backward-compat: ?lot=ID na URL → redireciona para /lote/:id
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const legacyLot = sp.get("lot");
+    if (legacyLot) {
+      navigate(`/lote/${encodeURIComponent(legacyLot)}`, { replace: true });
+    }
+  }, [navigate]);
+
+  // Deriva lotId da URL: /lote/:id
+  const lotParam = useMemo<string | null>(() => {
+    const m = location.pathname.match(/^\/lote\/([^/]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }, [location.pathname]);
+
+  // Deriva número da tela a partir do pathname
+  const s = useMemo(() => pathToScreen(location.pathname), [location.pathname]);
+
+  const { user, logout, setViewingFarmId } = useContext(AppContext);
   const { theme } = useContext(ThemeContext);
   const showNav = !!user && s >= 3 && s !== 13 && s !== 16;
+
+  // Se URL é /fazenda/:id, populate viewingFarmId antes de renderizar SPublicProfile
+  useEffect(() => {
+    const m = location.pathname.match(/^\/fazenda\/([^/]+)/);
+    if (m) {
+      setViewingFarmId(decodeURIComponent(m[1]));
+    }
+  }, [location.pathname, setViewingFarmId]);
 
   useEffect(() => {
     document.body.style.backgroundColor = theme === "dark" ? "#0A0A0A" : "#F5F5F0";
   }, [theme]);
 
   useEffect(() => {
-    if (user && (s === 0 || s === 1 || s === 2)) setS(3);
-  }, [user]);
+    // Se logou estando em landing/cadastro/login, vai pro dashboard
+    if (user && (s === 0 || s === 1 || s === 2)) {
+      navigate("/app", { replace: true });
+    }
+  }, [user, s, navigate]);
 
-  const handleLogout = () => { logout(); setS(0); };
+  const handleLogout = () => { logout(); navigate("/"); };
 
-  const go = (n: number): void => { setS(n); };
+  // Mantém a assinatura go(n) para os 17 componentes existentes não precisarem mudar
+  const go = (n: number): void => { navigate(SCREEN_PATHS[n] ?? "/"); };
+  const setS = (n: number) => navigate(SCREEN_PATHS[n] ?? "/");
 
   const renderScreen = () => {
     switch (s) {
@@ -6302,12 +6365,14 @@ export default function App() {
     return next;
   });
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      <LangContext.Provider value={{ lang, setLang }}>
-        <AppProvider>
-          <AppContent />
-        </AppProvider>
-      </LangContext.Provider>
-    </ThemeContext.Provider>
+    <BrowserRouter>
+      <ThemeContext.Provider value={{ theme, toggleTheme }}>
+        <LangContext.Provider value={{ lang, setLang }}>
+          <AppProvider>
+            <AppContent />
+          </AppProvider>
+        </LangContext.Provider>
+      </ThemeContext.Provider>
+    </BrowserRouter>
   );
 }
