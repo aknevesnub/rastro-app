@@ -48,6 +48,73 @@ function useBodyScrollLock(enabled = true) {
 }
 
 // ─────────────────────────────────────────────
+// SEO: atualiza <title>, <meta description>, OG e Twitter por rota
+// ─────────────────────────────────────────────
+
+const SEO_DEFAULT_OG = "https://quemproduz.com/og-default.png";
+
+type SEOProps = {
+  title: string;
+  description: string;
+  path?: string;          // ex: "/vitrine"
+  image?: string;         // og:image absoluta
+  type?: "website" | "article" | "profile";
+  noindex?: boolean;
+};
+
+function setMetaByName(name: string, content: string) {
+  let el = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute("name", name);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", content);
+}
+function setMetaByProp(prop: string, content: string) {
+  let el = document.head.querySelector<HTMLMetaElement>(`meta[property="${prop}"]`);
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute("property", prop);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", content);
+}
+function setCanonical(href: string) {
+  let el = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+  if (!el) {
+    el = document.createElement("link");
+    el.setAttribute("rel", "canonical");
+    document.head.appendChild(el);
+  }
+  el.setAttribute("href", href);
+}
+
+function useSEO({ title, description, path, image, type = "website", noindex }: SEOProps) {
+  useEffect(() => {
+    const fullTitle = /quem\s*produz/i.test(title) ? title : `${title} — Quem Produz`;
+    const url = `https://quemproduz.com${path ?? (typeof window !== "undefined" ? window.location.pathname : "/")}`;
+    const ogImage = image || SEO_DEFAULT_OG;
+
+    document.title = fullTitle;
+    setMetaByName("description", description);
+    setMetaByName("robots", noindex ? "noindex, nofollow" : "index, follow");
+    setCanonical(url);
+
+    setMetaByProp("og:type", type);
+    setMetaByProp("og:title", fullTitle);
+    setMetaByProp("og:description", description);
+    setMetaByProp("og:url", url);
+    setMetaByProp("og:image", ogImage);
+
+    setMetaByName("twitter:card", "summary_large_image");
+    setMetaByName("twitter:title", fullTitle);
+    setMetaByName("twitter:description", description);
+    setMetaByName("twitter:image", ogImage);
+  }, [title, description, path, image, type, noindex]);
+}
+
+// ─────────────────────────────────────────────
 // i18n
 // ─────────────────────────────────────────────
 
@@ -2335,6 +2402,11 @@ const VITRINE_DEMO: VitrineEntry[] = [
 const SVitrine = ({ go }: { go: (s: number) => void }) => {
   const navigate = useNavigate();
   const { user, sendProposal, addToast, setViewingFarmId } = useContext(AppContext);
+  useSEO({
+    title: "Vitrine — Fazendas brasileiras rastreadas",
+    description: "Explore fazendas com rastreabilidade certificada por bioma, cultura e região. EUDR, PRODES/INPE e registro digital. Conexão direta com produtores.",
+    path: "/vitrine",
+  });
   const isComprador = user?.role && user.role !== "produtor";
   const [proposalTarget, setProposalTarget] = useState<VitrineEntry | null>(null);
   const [propForm, setPropForm] = useState({ message: "", volume: "", products: [] as string[] });
@@ -2819,6 +2891,11 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
   const t = useLang();
   const { lots: realLots } = useContext(AppContext);
   const [activeSection, setActiveSection] = useState("hero");
+  useSEO({
+    title: "Quem Produz — Vitrine Digital do Agro",
+    description: "A vitrine digital do agronegócio brasileiro. Crie seu perfil em 5 minutos, organize lotes com QR rastreável e conecte sua fazenda a compradores no Brasil e na Europa. Conformidade EUDR, 100% grátis.",
+    path: "/",
+  });
   const heroRef = useRef<HTMLDivElement>(null);
   const farmsRef = useRef<HTMLDivElement>(null);
   const mapLandRef = useRef<HTMLDivElement>(null);
@@ -3241,6 +3318,11 @@ const ROLE_PRODUCTS_LABEL: Record<UserRole, string> = {
 
 const SCadastro = ({ go }: { go: (s: number) => void }) => {
   const { saveUser, addToast } = useContext(AppContext);
+  useSEO({
+    title: "Criar conta — Cadastro grátis",
+    description: "Cadastre sua fazenda na Quem Produz em 5 minutos. Vitrine pública, QR de rastreabilidade por lote e conformidade EUDR. Grátis.",
+    path: "/cadastro",
+  });
   const [role, setRole] = useState<UserRole | null>(null);
   const [logo, setLogo] = useState("");
   const [logoTransform, setLogoTransform] = useState<LogoTransform>({ scale: 1, x: 0, y: 0 });
@@ -3419,6 +3501,12 @@ const SCadastro = ({ go }: { go: (s: number) => void }) => {
 
 const SLogin = ({ go }: { go: (s: number) => void }) => {
   const { user, addToast, saveUser } = useContext(AppContext);
+  useSEO({
+    title: "Entrar — Acesse sua vitrine",
+    description: "Acesse sua conta Quem Produz para gerenciar lotes, perfil público e documentos da fazenda.",
+    path: "/login",
+    noindex: true,
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -4135,6 +4223,22 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const displayCoverTransform = isViewingOther ? viewedFarm?.coverTransform : user?.coverTransform;
   const displayLogo = isViewingOther ? viewedFarm?.logoUrl : user?.logo;
   const displayLogoTransform = isViewingOther ? viewedFarm?.logoTransform : user?.logoTransform;
+
+  // SEO dinâmico — só quando estiver vendo perfil público de outra fazenda
+  useSEO({
+    title: isViewingOther
+      ? (displayFarmName ? `${displayFarmName}${displayLocation ? " — " + displayLocation : ""}` : "Perfil da fazenda")
+      : "Meu perfil público",
+    description: isViewingOther
+      ? (displayDescription
+          ? displayDescription.slice(0, 160)
+          : `Conheça ${displayFarmName ?? "esta fazenda"} na Quem Produz. Rastreabilidade EUDR, lotes mapeados e produção verificada.`)
+      : "Edite e visualize seu perfil público na Quem Produz.",
+    path: isViewingOther && viewingFarmId ? `/fazenda/${viewingFarmId}` : "/app/vitrine",
+    image: isViewingOther && displayCover ? displayCover : (displayLogo || undefined),
+    type: "profile",
+    noindex: !isViewingOther,
+  });
   const displayProducts = isViewingOther
     ? (viewedFarm?.products?.map(p => p.name) ?? [])
     : (user?.products ?? []);
@@ -5018,6 +5122,22 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
     try { return JSON.parse(localStorage.getItem("rastro_user") || "null") as AppUser | null; }
     catch { return null; }
   }, [apiLot]);
+
+  // SEO dinâmico — usa dados do lote quando disponíveis (carrega progressivamente)
+  const seoFarmName = apiLot?.user.farmName ?? localUser?.farmName ?? "";
+  const seoLotName = apiLot?.name ?? localLot?.name ?? "";
+  const seoCrop = apiLot?.crop ?? localLot?.crop ?? "";
+  const seoLocation = apiLot?.user.location ?? localUser?.location ?? "";
+  const seoCover = apiLot?.photos?.[0]?.url ?? (localLot?.photos?.[0] || undefined);
+  useSEO({
+    title: seoLotName && seoFarmName ? `${seoLotName} — ${seoFarmName}` : "Lote rastreável — Quem Produz",
+    description: seoLotName
+      ? `Lote ${seoLotName}${seoCrop ? " (" + seoCrop + ")" : ""} de ${seoFarmName || "fazenda brasileira"}${seoLocation ? " em " + seoLocation : ""}. Origem rastreada com QR e conformidade EUDR.`
+      : "Página pública do lote com origem rastreada via QR. Quem Produz — Rastreabilidade EUDR para o agro brasileiro.",
+    path: `/lote/${lotId}`,
+    image: seoCover,
+    type: "article",
+  });
 
   if (loading) {
     return (
@@ -5966,6 +6086,11 @@ const SPraticas = ({ go }: { go: (s: number) => void }) => {
 
 const SPlanos = ({ go }: { go: (s: number) => void }) => {
   const { user, saveUser, addToast } = useContext(AppContext);
+  useSEO({
+    title: "Planos e preços — Quem Produz",
+    description: "Comece grátis com 30 dias de trial. Planos para produtores, cooperativas e compradores. Rastreabilidade EUDR, lotes ilimitados e suporte dedicado.",
+    path: "/planos",
+  });
   const { tier } = usePlan();
   const [loading, setLoading] = useState<PlanTier | null>(null);
 
