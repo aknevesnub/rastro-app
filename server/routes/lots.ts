@@ -201,12 +201,16 @@ lotsRouter.post("/", authenticate, async (req: AuthRequest, res) => {
     // Valida polígono se enviado
     if (geoPolygon) {
       const polyCheck = validatePolygon(geoPolygon);
-      if (!polyCheck.ok) return res.status(400).json({ error: polyCheck.error });
+      if (polyCheck.ok === false) {
+        return res.status(400).json({ error: polyCheck.error });
+      }
     }
 
     // Valida regras EUDR
     const eudrCheck = validateEudrCompliance(!!eudrCompliant, geoPolygon, harvestDate);
-    if (!eudrCheck.ok) return res.status(400).json({ error: eudrCheck.error });
+    if (eudrCheck.ok === false) {
+      return res.status(400).json({ error: eudrCheck.error });
+    }
 
     const lot = await prisma.lot.create({
       data: {
@@ -290,7 +294,9 @@ lotsRouter.put("/:id", authenticate, async (req: AuthRequest, res) => {
     }
     if (geoPolygon !== undefined && geoPolygon !== null) {
       const polyCheck = validatePolygon(geoPolygon);
-      if (!polyCheck.ok) return res.status(400).json({ error: polyCheck.error });
+      if (polyCheck.ok === false) {
+        return res.status(400).json({ error: polyCheck.error });
+      }
     }
 
     // Recompõe estado final para validação EUDR (campos novos prevalecem)
@@ -300,7 +306,9 @@ lotsRouter.put("/:id", authenticate, async (req: AuthRequest, res) => {
       ? harvestDate
       : existing.harvestDate?.toISOString();
     const eudrCheck = validateEudrCompliance(finalEudr, finalPolygon, finalHarvest);
-    if (!eudrCheck.ok) return res.status(400).json({ error: eudrCheck.error });
+    if (eudrCheck.ok === false) {
+      return res.status(400).json({ error: eudrCheck.error });
+    }
 
     await prisma.lot.update({
       where: { id: req.params.id },
