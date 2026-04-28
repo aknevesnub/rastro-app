@@ -931,6 +931,73 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   outro: "Outro",
 };
 
+// Gera HTML de imagem de satélite (Esri World Imagery) com polígono do lote desenhado por cima.
+// Usa endpoint público de exportação (sem chave de API).
+const lotSatelliteHTML = (lot: Lot, width = 600, height = 400): string => {
+  const pts = lot.mapPoints || [];
+  if (pts.length < 2) return "";
+
+  // BBox dos pontos
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const [lat, lng] of pts) {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  }
+
+  // Padding 30% pra o polígono não colar nas bordas
+  const padLat = Math.max((maxLat - minLat) * 0.3, 0.001);
+  const padLng = Math.max((maxLng - minLng) * 0.3, 0.001);
+  minLat -= padLat; maxLat += padLat;
+  minLng -= padLng; maxLng += padLng;
+
+  // Ajusta aspect ratio do bbox pra bater com a imagem (evita distorção)
+  const imgAspect = width / height;
+  // Em latitudes brasileiras, 1° lat ≈ 1° lng * cos(lat) — compensação simples
+  const cosLat = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
+  const bboxLatHeight = maxLat - minLat;
+  const bboxLngWidth = (maxLng - minLng) * cosLat;
+  const bboxAspect = bboxLngWidth / bboxLatHeight;
+
+  if (bboxAspect < imgAspect) {
+    // Bbox mais alto que a imagem → expande horizontalmente
+    const targetLngWidth = bboxLatHeight * imgAspect / cosLat;
+    const extra = (targetLngWidth - (maxLng - minLng)) / 2;
+    minLng -= extra; maxLng += extra;
+  } else {
+    // Bbox mais largo → expande verticalmente
+    const targetLatHeight = bboxLngWidth / imgAspect;
+    const extra = (targetLatHeight - bboxLatHeight) / 2;
+    minLat -= extra; maxLat += extra;
+  }
+
+  const url = `https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export?bbox=${minLng},${minLat},${maxLng},${maxLat}&bboxSR=4326&imageSR=4326&size=${width},${height}&format=jpg&f=image`;
+
+  // Mapeia pontos do polígono pra coordenadas da imagem (px)
+  const polyPx = pts.map(([lat, lng]) => {
+    const x = ((lng - minLng) / (maxLng - minLng)) * width;
+    const y = (1 - (lat - minLat) / (maxLat - minLat)) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+
+  // Centro pra mostrar embaixo
+  const centerLat = (minLat + maxLat) / 2;
+  const centerLng = (minLng + maxLng) / 2;
+
+  return `
+<div style="position:relative;width:100%;max-width:${width}px;margin:8px 0">
+  <img src="${url}" alt="Imagem de satélite do lote" style="width:100%;display:block;border:1px solid #ccc" />
+  <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"
+    style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none">
+    <polygon points="${polyPx}" fill="rgba(15,138,48,0.25)" stroke="#0AEF43" stroke-width="2.5" />
+  </svg>
+  <div style="font-size:10px;color:#666;margin-top:4px">
+    Centro aproximado: ${centerLat.toFixed(5)}, ${centerLng.toFixed(5)} · Imagem: Esri World Imagery
+  </div>
+</div>`;
+};
+
 const openDossie = (
   user: AppUser,
   lots: Lot[],
@@ -1044,6 +1111,22 @@ ${lots.map(l => `<tr>
 <td>${(l as Lot & { eudrCompliant?: boolean }).eudrCompliant ? '<span class="ok">✓ Sim</span>' : '<span class="muted">—</span>'}</td>
 </tr>`).join("")}
 </tbody></table>`}
+
+${(() => {
+  const lotsWithGeo = lots.filter(l => l.mapPoints && l.mapPoints.length >= 3);
+  if (lotsWithGeo.length === 0) return "";
+  return `
+<h2>Imagens de Satélite dos Lotes</h2>
+<p class="muted" style="margin-bottom:14px">Imagens da Esri World Imagery com o polígono declarado pelo produtor desenhado por cima.</p>
+${lotsWithGeo.map(l => `
+<div style="page-break-inside:avoid;margin:18px 0;padding:14px;border:1px solid #ddd">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+    <h3 style="margin:0;font-size:14px">${esc(l.name)}</h3>
+    <span style="font-size:11px;color:#666">${esc(l.crop)} · ~${esc(l.area)} ha${(l as Lot & { eudrCompliant?: boolean }).eudrCompliant ? ' · <span class="ok">✓ EUDR</span>' : ''}</span>
+  </div>
+  ${lotSatelliteHTML(l)}
+</div>`).join("")}`;
+})()}
 
 <h2>Documentos da Propriedade (${documents.length})</h2>
 ${documents.length === 0 ? `<p class="muted">Nenhum documento anexado.</p>` : `
