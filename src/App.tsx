@@ -2438,7 +2438,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   const labelsLayerRef = useRef<L.TileLayer | null>(null);
   const suppressClickRef = useRef(false);
   const [activeEntry, setActiveEntry] = useState<VitrineEntry | null>(null);
-  const [showMap, setShowMap] = useState(false);
+  const [showMap, setShowMap] = useState(true);
 
   const selectEntry = (entry: VitrineEntry | null) => {
     suppressClickRef.current = true;
