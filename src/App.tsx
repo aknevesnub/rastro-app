@@ -18,7 +18,7 @@ import {
   TrendingUp, Users, Award, ChevronDown,
   Sun, Moon,
   Landmark, AlertTriangle, ExternalLink, BadgeCheck, Search,
-  Layers, Ruler,
+  Layers, Ruler, Send,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────
@@ -4298,7 +4298,7 @@ const SEditProfile = ({ go }: { go: (s: number) => void }) => {
 };
 
 const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
-  const { user, lots, events, addToast, viewingFarmId, setViewingFarmId } = useContext(AppContext);
+  const { user, lots, events, addToast, viewingFarmId, setViewingFarmId, sendProposal } = useContext(AppContext);
   const isViewingOther = !!viewingFarmId && viewingFarmId !== user?.id;
   const [viewedFarm, setViewedFarm] = useState<import("./services/api").ApiUser | null>(null);
   const [viewedLots, setViewedLots] = useState<import("./services/api").ApiLot[]>([]);
@@ -4386,8 +4386,14 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const displayEvents = isViewingOther ? [] : events;
 
   const totalArea = displayLots.reduce((acc, l) => acc + (Number(l.area) || 0), 0);
-  const profileUrl = `${window.location.origin}?farm=${encodeURIComponent(displayFarmName || "")}`;
+  const profileUrl = isViewingOther && viewingFarmId
+    ? `${window.location.origin}/fazenda/${encodeURIComponent(viewingFarmId)}`
+    : `${window.location.origin}?farm=${encodeURIComponent(displayFarmName || "")}`;
   const [galleryIdx, setGalleryIdx] = useState<number | null>(null);
+  const [showProposal, setShowProposal] = useState(false);
+  const [propForm, setPropForm] = useState({ message: "", volume: "", products: [] as string[] });
+  const isComprador = !!user && user.role && user.role !== "produtor";
+  const canSendProposal = isViewingOther && isComprador;
 
   // Aggregate all lot photos for the gallery (logged-in user only — backend lots type differs)
   const allPhotos = isViewingOther
@@ -4435,195 +4441,401 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
     return <Tractor size={15} />;
   };
 
+  const heroPhotos = allPhotos.slice(0, 5);
+  const hasGallery = heroPhotos.length > 0;
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-28 md:pb-0">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-32 md:pb-12">
 
-      {/* ── Hero cover ── */}
-      <div className="h-64 md:h-80 relative">
-        <div className="absolute inset-0 overflow-hidden">
-          {displayCover
-            ? <img src={displayCover} alt="cover" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} />
-            : <img src="https://picsum.photos/seed/farmcover/800/400" alt="Cover" className="w-full h-full object-cover grayscale opacity-50" />}
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/40 to-transparent" />
-        <button onClick={handleBack} className="absolute top-4 left-4 w-10 h-10 bg-bg/60 backdrop-blur-md flex items-center justify-center text-text border border-white/20 rounded-xl hover:border-accent transition-colors">
-          <ChevronLeft size={22} />
-        </button>
-        <button onClick={() => doShare(profileUrl, displayFarmName || "Fazenda", addToast)} className="absolute top-4 right-4 w-10 h-10 bg-bg/60 backdrop-blur-md flex items-center justify-center text-text border border-white/20 hover:border-accent transition-colors rounded-xl">
-          <Share2 size={17} />
-        </button>
-        {/* Logo badge */}
-        <div className="absolute -bottom-12 left-6 w-24 h-24 bg-bg p-1 border-2 border-accent/40 rounded-2xl z-10 overflow-hidden shadow-2xl">
-          {displayLogo ? <LogoImg src={displayLogo} transform={displayLogoTransform} /> : <img src="https://picsum.photos/seed/farmlogo/200/200" alt="Logo" className="w-full h-full object-cover grayscale rounded-xl" />}
-        </div>
-      </div>
-
-      {/* ── Identity ── */}
-      <div className="pt-16 px-6 md:px-10 pb-8 border-b border-white/10 max-w-5xl mx-auto">
-        <h1 className="font-black text-3xl uppercase tracking-tighter text-text leading-none mb-2">{displayFarmName || "Fazenda"}</h1>
-        <div className="flex flex-wrap gap-4 mb-5">
-          {displayLocation && <p className="text-[10px] font-bold uppercase tracking-widest text-accent flex items-center gap-1.5"><MapPin size={11} />{displayLocation}</p>}
-          {totalArea > 0 && <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 flex items-center gap-1.5"><MapIcon size={10} />~{totalArea.toLocaleString("pt-BR")} ha <span className="text-white/25 text-[8px] normal-case tracking-normal font-normal">(est.)</span></p>}
-        </div>
-        <p className="text-sm text-white/55 leading-relaxed mb-6">{displayDescription || "Rural producer committed to sustainable and traceable practices."}</p>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {[
-            { value: displayLots.length,                    label: "Lots / Lotes" },
-            { value: totalArea > 0 ? `~${totalArea.toLocaleString("pt-BR")} ha` : "—", label: "Total Area (est.)" },
-            { value: displayCerts.length + 1,               label: "Certifications" },
-          ].map((s, i) => (
-            <div key={i} className={`border rounded-2xl p-3 text-center ${i === 2 ? "border-accent/25 bg-accent/5" : "border-white/10 bg-white/[0.02]"}`}>
-              <div className={`text-xl font-black ${i === 2 ? "text-accent" : "text-text"}`}>{s.value}</div>
-              <div className={`text-[8px] font-bold uppercase tracking-widest mt-0.5 ${i === 2 ? "text-accent/50" : "text-text/35"}`}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Certifications */}
-        <div className="flex gap-2 flex-wrap">
-          <span className="px-3 py-1.5 border border-accent text-accent text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5 rounded-full"><ShieldCheck size={11} />EUDR Compliant</span>
-          {displayCerts.map((c, i) => (
-            <span key={i} className="px-3 py-1.5 border border-white/20 text-white/60 text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5 rounded-full"><CheckCircle2 size={11} />{c}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Products ── */}
-      {products.length > 0 && (
-        <div className="px-6 md:px-10 py-6 border-b border-white/10 max-w-5xl mx-auto">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-text/40 mb-4">Products / Produtos</p>
-          <div className="flex gap-2 flex-wrap">
-            {products.map((p, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-2 border border-white/10 rounded-xl bg-white/[0.02]">
-                <Sprout size={12} className="text-accent" />
-                <span className="text-xs font-bold text-text uppercase tracking-wide">{p}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Práticas Declaradas (autodeclaração) ── */}
-      {displayPractices.length > 0 && (
-        <div className="px-6 md:px-10 py-6 border-b border-white/10 max-w-5xl mx-auto">
-          <div className="flex items-baseline justify-between mb-4">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-text/40">Práticas Declaradas / Declared Practices</p>
-            <span className="text-[8px] text-white/30 italic">Autodeclaração do produtor</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {displayPractices.map((p) => (
-              <div key={p.id} className="flex items-start gap-3 p-3 border border-white/10 rounded-xl bg-white/[0.02]">
-                <Leaf size={14} className="text-accent shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-xs font-bold text-text uppercase tracking-wide">{p.name}</span>
-                    {p.startDate && (
-                      <span className="text-[9px] font-bold text-accent/70 uppercase tracking-widest">
-                        desde {new Date(p.startDate).toLocaleDateString("pt-BR")}
-                      </span>
-                    )}
-                  </div>
-                  {p.notes && <p className="text-[10px] text-white/55 mt-1 italic">"{p.notes}"</p>}
-                  {p.photoUrl && <img src={p.photoUrl} alt={p.name} className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Farm Photo Gallery ── */}
-      {allPhotos.length > 0 && (
-        <div className="py-6 border-b border-white/10 max-w-5xl mx-auto">
-          <div className="flex items-center justify-between px-6 md:px-10 mb-4">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-text/40">Farm Gallery / Galeria</p>
-            <span className="text-[8px] font-bold uppercase tracking-widest text-white/30">{allPhotos.length} foto{allPhotos.length !== 1 ? "s" : ""}</span>
-          </div>
-          <div className="flex gap-3 overflow-x-auto px-6 md:px-10 pb-1 snap-x snap-mandatory" style={{ scrollbarWidth: "none" }}>
-            {allPhotos.map((p, i) => (
-              <button key={i} onClick={() => setGalleryIdx(i)} className="shrink-0 snap-start w-52 h-36 rounded-2xl overflow-hidden border border-white/10 relative group focus:outline-none hover:border-white/30 transition-colors">
-                <img
-                  src={p.src}
-                  alt={p.lotName}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                <div className="absolute bottom-2.5 left-3 right-3">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-white truncate">{p.lotName}</p>
-                  <p className="text-[8px] text-white/55 uppercase tracking-wide">{p.crop}</p>
-                </div>
+      {/* ── Top action bar (sticky) ── */}
+      <div className="sticky top-0 z-40 bg-bg/85 backdrop-blur-xl border-b border-white/8">
+        <div className="max-w-6xl mx-auto px-4 md:px-8 h-14 flex items-center justify-between gap-3">
+          <button onClick={handleBack} className="flex items-center gap-1.5 text-text/70 hover:text-text transition-colors">
+            <ChevronLeft size={18} />
+            <span className="text-sm font-medium">Voltar</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => doShare(profileUrl, displayFarmName || "Fazenda", addToast)}
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full text-text/70 hover:text-text hover:bg-white/5 transition-colors text-xs font-semibold">
+              <Share2 size={14} /> Compartilhar
+            </button>
+            <button onClick={() => doShare(profileUrl, displayFarmName || "Fazenda", addToast)}
+              className="md:hidden w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-text/70 hover:text-text">
+              <Share2 size={15} />
+            </button>
+            {canSendProposal && (
+              <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
+                className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent text-bg text-xs font-bold hover:bg-accent/90 transition-colors">
+                <Send size={13} /> Enviar proposta
               </button>
-            ))}
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ── QR Code CTA — só na visão do próprio dono autenticado ── */}
-      {!isViewingOther && user && (
-        <div className="px-6 md:px-10 py-6 border-b border-white/10 max-w-5xl mx-auto">
-          <div className="border border-accent/40 p-4 flex items-center gap-4 bg-accent/5 cursor-pointer rounded-2xl hover:border-accent/70 transition-colors" onClick={() => go(10)}>
-            <div className="w-12 h-12 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center text-accent shrink-0">
-              <QrCode size={24} />
-            </div>
-            <div className="flex-1">
-              <div className="text-xs font-black uppercase tracking-wide text-text mb-0.5">QR Code de Rastreio</div>
-              <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">Scan to verify authenticity · Escaneie para verificar</div>
-            </div>
-            <ChevronRight size={16} className="text-accent shrink-0" />
+      {/* ── Hero: cover + photo grid (Airbnb-style) ── */}
+      <div className="max-w-6xl mx-auto px-4 md:px-8 pt-4 md:pt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-2xl overflow-hidden">
+          {/* Main cover */}
+          <div className="relative aspect-[4/3] md:aspect-[5/4] bg-white/5 group cursor-pointer"
+            onClick={() => hasGallery && setGalleryIdx(0)}>
+            {displayCover
+              ? <img src={displayCover} alt={displayFarmName} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} className="transition-transform duration-500 group-hover:scale-[1.02]" />
+              : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/15 to-bg">
+                  <span className="text-6xl font-black text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
+                </div>}
           </div>
-        </div>
-      )}
 
-      {/* ── Activity Timeline ── */}
-      <div className="px-6 md:px-10 py-6 max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-text/40">Activity Timeline / Histórico</p>
-          {displayEvents.length > 0 && (
-            <span className="text-[8px] font-bold uppercase tracking-widest text-accent border border-accent/30 px-2 py-0.5 rounded-full">{displayEvents.length} event{displayEvents.length !== 1 ? "s" : ""}</span>
+          {/* Photo grid 2x2 (desktop only) */}
+          {hasGallery && (
+            <div className="hidden md:grid grid-cols-2 grid-rows-2 gap-2">
+              {heroPhotos.slice(0, 4).map((p, i) => (
+                <button key={i} onClick={() => setGalleryIdx(i)}
+                  className="relative bg-white/5 overflow-hidden group">
+                  <img src={p.src} alt={p.lotName}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined} />
+                  {i === 3 && allPhotos.length > 4 && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <span className="text-white text-sm font-bold">+{allPhotos.length - 4} fotos</span>
+                    </div>
+                  )}
+                </button>
+              ))}
+              {heroPhotos.length < 4 && Array.from({ length: 4 - heroPhotos.length }).map((_, i) => (
+                <div key={`ph-${i}`} className="bg-white/5" />
+              ))}
+            </div>
           )}
         </div>
 
-        {displayEvents.length === 0 && (
-          <div className="py-10 text-center border border-text/10 rounded-2xl" style={{ background: "color-mix(in srgb, var(--color-text) 3%, transparent)" }}>
-            <Tractor size={28} className="text-text/25 mx-auto mb-3" />
-            <p className="text-[10px] font-bold uppercase tracking-widest text-text/35">No activity recorded yet</p>
-          </div>
+        {hasGallery && (
+          <button onClick={() => setGalleryIdx(0)}
+            className="md:hidden mt-2 text-xs font-semibold text-text/70 underline underline-offset-4">
+            Ver todas as {allPhotos.length} fotos
+          </button>
         )}
+      </div>
 
-        <div className="relative">
-          {displayEvents.length > 1 && <div className="absolute left-[19px] top-10 bottom-10 w-px bg-text/10" />}
-          <div className="space-y-3">
-            {displayEvents.map((e, idx) => {
-              const cfg = eventConfig[e.type] ?? eventConfig.update;
-              return (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.035 }}
-                  className="flex gap-4 items-start"
-                >
-                  {/* Icon dot */}
-                  <div className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center z-10 ${cfg.color}`}>
-                    <EventIcon type={e.type} />
+      {/* ── Body 2-column ── */}
+      <div className="max-w-6xl mx-auto px-4 md:px-8 pt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-8">
+
+        {/* ── Coluna esquerda (conteúdo) ── */}
+        <div className="md:col-span-2 space-y-8">
+
+          {/* Identity */}
+          <div>
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl overflow-hidden border border-white/15 bg-white/5 shrink-0 shadow-lg">
+                {displayLogo
+                  ? <LogoImg src={displayLogo} transform={displayLogoTransform} />
+                  : <div className="w-full h-full flex items-center justify-center text-text/40 font-bold">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
+              </div>
+              <div className="flex-1 min-w-0 pt-0.5">
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-text leading-tight">
+                  {displayFarmName || "Fazenda"}
+                </h1>
+                {displayLocation && (
+                  <p className="text-sm text-text/55 mt-1 flex items-center gap-1.5">
+                    <MapPin size={13} /> {displayLocation}
+                    {totalArea > 0 && <span> · {totalArea.toLocaleString("pt-BR")} ha</span>}
+                  </p>
+                )}
+              </div>
+            </div>
+            {displayDescription && (
+              <p className="text-[15px] text-text/75 leading-relaxed">
+                {displayDescription}
+              </p>
+            )}
+          </div>
+
+          {/* Trust signals strip */}
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent text-bg text-xs font-bold">
+              <ShieldCheck size={13} strokeWidth={2.5} /> EUDR conforme
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/15 text-text/80 text-xs font-medium">
+              <Globe size={12} /> PRODES/INPE verificado
+            </span>
+            {displayPractices.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/15 text-text/80 text-xs font-medium">
+                <Leaf size={12} /> {displayPractices.length} {displayPractices.length === 1 ? "prática" : "práticas"} sustentáveis
+              </span>
+            )}
+            {displayCerts.map((c, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/15 text-text/80 text-xs font-medium">
+                <CheckCircle2 size={12} /> {c}
+              </span>
+            ))}
+          </div>
+
+          {/* Stats em linha */}
+          <div className="grid grid-cols-3 gap-3 py-5 border-y border-white/8">
+            <div>
+              <div className="text-2xl font-bold text-text leading-none">{displayLots.length}</div>
+              <div className="text-xs text-text/45 mt-1.5">Lote{displayLots.length !== 1 ? "s" : ""} mapeado{displayLots.length !== 1 ? "s" : ""}</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-text leading-none">
+                {totalArea > 0 ? totalArea.toLocaleString("pt-BR") : "—"}
+                {totalArea > 0 && <span className="text-sm font-medium text-text/40 ml-1">ha</span>}
+              </div>
+              <div className="text-xs text-text/45 mt-1.5">Área registrada</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-accent leading-none">{displayCerts.length + 1}</div>
+              <div className="text-xs text-text/45 mt-1.5">Certificações</div>
+            </div>
+          </div>
+
+          {/* Produtos */}
+          {products.length > 0 && (
+            <div>
+              <h2 className="text-base font-bold text-text mb-3">O que produzem</h2>
+              <div className="flex gap-2 flex-wrap">
+                {products.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-white/12 bg-white/[0.02] hover:border-white/25 transition-colors">
+                    <Sprout size={13} className="text-accent" />
+                    <span className="text-sm font-medium text-text">{p}</span>
                   </div>
-                  {/* Card */}
-                  <div className="flex-1 border border-text/10 rounded-2xl px-4 py-3 hover:border-text/20 transition-colors" style={{ background: "color-mix(in srgb, var(--color-text) 3%, transparent)" }}>
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-[11px] font-bold text-text leading-snug">{e.title}</p>
-                      <span className={`shrink-0 text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.labelEn}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Práticas */}
+          {displayPractices.length > 0 && (
+            <div>
+              <div className="flex items-baseline justify-between mb-3">
+                <h2 className="text-base font-bold text-text">Práticas declaradas</h2>
+                <span className="text-xs text-text/35 italic">Autodeclaração do produtor</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {displayPractices.map((p) => (
+                  <div key={p.id} className="flex items-start gap-3 p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
+                    <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+                      <Leaf size={14} className="text-accent" />
                     </div>
-                    <p className="text-[9px] text-text/35 mt-1 uppercase tracking-widest">{e.date}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="text-sm font-semibold text-text">{p.name}</span>
+                        {p.startDate && (
+                          <span className="text-[11px] font-medium text-accent/70">
+                            desde {new Date(p.startDate).toLocaleDateString("pt-BR")}
+                          </span>
+                        )}
+                      </div>
+                      {p.notes && <p className="text-xs text-text/55 mt-1 italic">"{p.notes}"</p>}
+                      {p.photoUrl && <img src={p.photoUrl} alt={p.name} className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
+                    </div>
                   </div>
-                </motion.div>
-              );
-            })}
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Atividade */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-text">Histórico de atividade</h2>
+              {displayEvents.length > 0 && (
+                <span className="text-xs text-accent font-semibold">{displayEvents.length} {displayEvents.length === 1 ? "evento" : "eventos"}</span>
+              )}
+            </div>
+
+            {displayEvents.length === 0 ? (
+              <div className="py-10 text-center rounded-2xl border border-white/8 bg-white/[0.02]">
+                <Tractor size={24} className="text-text/25 mx-auto mb-2" />
+                <p className="text-sm text-text/40">Nenhum registro ainda</p>
+              </div>
+            ) : (
+              <div className="relative">
+                {displayEvents.length > 1 && <div className="absolute left-[19px] top-10 bottom-10 w-px bg-white/10" />}
+                <div className="space-y-2.5">
+                  {displayEvents.map((e, idx) => {
+                    const cfg = eventConfig[e.type] ?? eventConfig.update;
+                    return (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: Math.min(idx * 0.035, 0.3) }}
+                        className="flex gap-3 items-start"
+                      >
+                        <div className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center z-10 ${cfg.color}`}>
+                          <EventIcon type={e.type} />
+                        </div>
+                        <div className="flex-1 rounded-2xl px-4 py-2.5 border border-white/8 bg-white/[0.02] hover:border-white/15 transition-colors">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-text leading-snug">{e.title}</p>
+                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
+                          </div>
+                          <p className="text-xs text-text/40 mt-1">{e.date}</p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* ── Coluna direita (sidebar conversão) ── */}
+        <aside className="hidden md:block">
+          <div className="sticky top-20 space-y-4">
+            {canSendProposal ? (
+              <div className="rounded-2xl border border-accent/30 bg-accent/5 p-5">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-accent mb-2">Interessado nessa fazenda?</p>
+                <h3 className="text-lg font-bold text-text leading-tight mb-3">Faça uma proposta direta ao produtor</h3>
+                <p className="text-sm text-text/60 leading-relaxed mb-4">
+                  Sem intermediários. Conexão direta com {displayFarmName || "o produtor"} para discutir volume, prazo e logística.
+                </p>
+                <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
+                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+                  <Send size={14} /> Enviar proposta
+                </button>
+                <p className="text-[11px] text-text/40 text-center mt-3">Resposta em até 48h</p>
+              </div>
+            ) : isViewingOther ? (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-accent mb-2">Quer fazer negócio?</p>
+                <h3 className="text-lg font-bold text-text leading-tight mb-3">Cadastre-se como comprador</h3>
+                <p className="text-sm text-text/60 mb-4 leading-relaxed">
+                  Compradores cadastrados podem enviar propostas diretas a esta e outras fazendas.
+                </p>
+                <button onClick={() => go(1)}
+                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors">
+                  Criar conta
+                </button>
+              </div>
+            ) : null}
+
+            {/* QR Code CTA — apenas dono */}
+            {!isViewingOther && user && (
+              <button onClick={() => go(10)}
+                className="w-full rounded-2xl border border-accent/30 bg-accent/5 hover:bg-accent/10 transition-colors p-4 flex items-center gap-3 text-left">
+                <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center text-accent shrink-0">
+                  <QrCode size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-text">QR Code de rastreio</div>
+                  <div className="text-xs text-text/45 mt-0.5">Compartilhe sua origem</div>
+                </div>
+                <ChevronRight size={16} className="text-accent shrink-0" />
+              </button>
+            )}
+
+            {/* Trust mini-list */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+              <p className="text-xs font-semibold text-text/50 mb-3">Por que confiar?</p>
+              <ul className="space-y-2.5 text-sm text-text/75">
+                <li className="flex items-start gap-2"><ShieldCheck size={14} className="text-accent mt-0.5 shrink-0" /> EUDR — Regulamento UE 2023/1115</li>
+                <li className="flex items-start gap-2"><Globe size={14} className="text-accent mt-0.5 shrink-0" /> Imagens PRODES/INPE para desmate</li>
+                <li className="flex items-start gap-2"><MapPin size={14} className="text-accent mt-0.5 shrink-0" /> Lotes com geocoordenadas registradas</li>
+              </ul>
+            </div>
+          </div>
+        </aside>
       </div>
+
+      {/* ── QR Code CTA mobile (apenas dono) ── */}
+      {!isViewingOther && user && (
+        <div className="md:hidden max-w-6xl mx-auto px-4 mt-8">
+          <button onClick={() => go(10)}
+            className="w-full rounded-2xl border border-accent/30 bg-accent/5 p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center text-accent shrink-0">
+              <QrCode size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-text">QR Code de rastreio</div>
+              <div className="text-xs text-text/45 mt-0.5">Compartilhe sua origem</div>
+            </div>
+            <ChevronRight size={16} className="text-accent shrink-0" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Sticky CTA bottom mobile (proposta) ── */}
+      {canSendProposal && (
+        <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-bg/95 backdrop-blur-xl border-t border-white/10 px-4 py-3">
+          <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
+            className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+            <Send size={15} /> Enviar proposta para {displayFarmName?.split(" ")[0] || "produtor"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Modal proposta ── */}
+      <AnimatePresence>
+        {showProposal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
+            onClick={() => setShowProposal(false)}>
+            <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-bg border border-white/15 w-full max-w-md rounded-3xl p-6">
+              <div className="flex items-start justify-between mb-5">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Nova proposta</p>
+                  <h3 className="text-lg font-bold text-text leading-tight">{displayFarmName}</h3>
+                  {displayLocation && <p className="text-xs text-text/45 mt-0.5 flex items-center gap-1"><MapPin size={11} />{displayLocation}</p>}
+                </div>
+                <button onClick={() => setShowProposal(false)} className="text-text/40 hover:text-text mt-1"><X size={18} /></button>
+              </div>
+
+              {products.length > 0 && (
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-text/70 mb-2">Produtos de interesse</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {products.map(p => (
+                      <button key={p} onClick={() => setPropForm(f => ({ ...f, products: f.products.includes(p) ? f.products.filter(x => x !== p) : [...f.products, p] }))}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${propForm.products.includes(p) ? "bg-accent text-bg border-accent" : "border-white/15 text-text/70 hover:border-white/30"}`}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-text/70 mb-2">Volume estimado</label>
+                <input value={propForm.volume} onChange={e => setPropForm(f => ({ ...f, volume: e.target.value }))}
+                  placeholder="Ex: 500 toneladas / safra"
+                  className="w-full px-4 py-3 border border-white/15 bg-white/5 focus:border-accent focus:bg-white/8 rounded-xl text-sm text-text placeholder-text/35 outline-none transition-colors" />
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-xs font-semibold text-text/70 mb-2">Mensagem</label>
+                <textarea value={propForm.message} onChange={e => setPropForm(f => ({ ...f, message: e.target.value }))}
+                  placeholder="Apresente-se e descreva sua proposta de negócio…"
+                  rows={4}
+                  className="w-full px-4 py-3 border border-white/15 bg-white/5 focus:border-accent focus:bg-white/8 rounded-xl text-sm text-text placeholder-text/35 outline-none resize-none transition-colors" />
+              </div>
+
+              <button onClick={() => {
+                if (!user || !propForm.message.trim()) { addToast("Escreva uma mensagem.", "error"); return; }
+                sendProposal({
+                  fromEmail: user.email,
+                  fromName: user.name || user.farmName,
+                  fromCompany: user.farmName,
+                  fromRole: user.role ?? "outro",
+                  toFarmName: displayFarmName || "Fazenda",
+                  products: propForm.products,
+                  volume: propForm.volume,
+                  message: propForm.message,
+                });
+                addToast(`Proposta enviada para ${displayFarmName}!`);
+                setShowProposal(false);
+              }}
+                className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+                <Send size={14} /> Enviar proposta
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Lightbox ── */}
       {galleryIdx !== null && allPhotos[galleryIdx] && createPortal(
