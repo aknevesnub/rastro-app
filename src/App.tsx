@@ -2438,12 +2438,13 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   const labelsLayerRef = useRef<L.TileLayer | null>(null);
   const suppressClickRef = useRef(false);
   const [activeEntry, setActiveEntry] = useState<VitrineEntry | null>(null);
+  const [showMap, setShowMap] = useState(false);
 
   const selectEntry = (entry: VitrineEntry | null) => {
     suppressClickRef.current = true;
     setTimeout(() => { suppressClickRef.current = false; }, 600);
     setActiveEntry(prev => (prev?.farmName === entry?.farmName ? null : entry));
-    if (entry) mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (entry && showMap) mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   // Stable memoized entries — only produtores appear in the vitrine
@@ -2530,9 +2531,9 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
     });
   }, [allEntries, selectedBiome, selectedCrop, locationSearch]);
 
-  // Init map once
+  // Init map only when showMap=true (lazy)
   useEffect(() => {
-    if (!mapRef.current || leafletRef.current) return;
+    if (!showMap || !mapRef.current || leafletRef.current) return;
     const map = L.map(mapRef.current, { zoomControl: true, attributionControl: false, scrollWheelZoom: true }).setView([-14, -52], 4);
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
     // Labels overlay
@@ -2541,8 +2542,8 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
     labelsLayerRef.current = labels;
     map.on("click", () => { if (!suppressClickRef.current) setActiveEntry(null); });
     leafletRef.current = map;
-    return () => { map.remove(); leafletRef.current = null; labelsLayerRef.current = null; };
-  }, []);
+    return () => { map.remove(); leafletRef.current = null; labelsLayerRef.current = null; markersRef.current = []; };
+  }, [showMap]);
 
   // Toggle labels layer
   useEffect(() => {
@@ -2634,179 +2635,240 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg">
 
       {/* ── Hero ── */}
-      <div className="px-5 pt-7 pb-6">
-        <button onClick={() => go(0)} className="flex items-center gap-1.5 text-text/30 hover:text-accent transition-colors mb-8">
-          <ChevronLeft size={12} />
-          <span className="text-[8px] font-bold uppercase tracking-widest">Voltar</span>
+      <div className="max-w-6xl mx-auto px-5 md:px-8 pt-6 pb-4">
+        <button onClick={() => go(0)} className="flex items-center gap-1.5 text-text/40 hover:text-text transition-colors mb-6">
+          <ChevronLeft size={14} />
+          <span className="text-xs font-medium">Voltar</span>
         </button>
 
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[8px] font-bold uppercase tracking-widest text-accent/70 mb-2">Quem Produz · Brasil</p>
-            <h1 className="text-[2.6rem] font-extrabold uppercase tracking-tight leading-[0.88] text-text">
-              Vitrine<br />de Fazendas
-            </h1>
+        <div className="flex items-end justify-between gap-4 mb-1">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-text leading-tight">
+            Fazendas brasileiras<br className="hidden md:block" />
+            <span className="text-text/50"> com rastreabilidade</span>
+          </h1>
+        </div>
+        <p className="text-sm text-text/50 mt-2">
+          {filtered.length} {filtered.length === 1 ? "fazenda" : "fazendas"} · todas com EUDR e registro digital verificado
+        </p>
+      </div>
+
+      {/* ── Barra sticky: busca + filtros ── */}
+      <div className="sticky top-0 z-40 bg-bg/95 backdrop-blur-xl border-b border-white/8">
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-3 flex flex-col gap-3">
+          {/* Linha 1: busca + toggle mapa */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 focus-within:border-accent/40 transition-colors">
+              <Search size={14} className="text-text/40 shrink-0" />
+              <input
+                type="text"
+                value={locationSearch}
+                onChange={e => setLocationSearch(e.target.value)}
+                placeholder="Buscar por fazenda, cidade ou região…"
+                className="flex-1 bg-transparent text-sm text-text placeholder:text-text/35 outline-none"
+              />
+              {locationSearch && <button onClick={() => setLocationSearch("")} className="text-text/40 hover:text-text"><X size={14} /></button>}
+            </div>
+            <button
+              onClick={() => setShowMap(v => !v)}
+              className={`shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-full border text-xs font-semibold transition-all ${showMap ? "bg-accent text-bg border-accent" : "border-white/15 text-text/70 hover:border-white/30"}`}
+            >
+              <MapPin size={13} />
+              <span className="hidden sm:inline">{showMap ? "Ocultar mapa" : "Ver mapa"}</span>
+            </button>
           </div>
-          <div className="text-right mt-1 shrink-0">
-            <div className="text-[2.8rem] font-black leading-none text-accent tabular-nums">{filtered.length}</div>
-            <div className="text-[7px] font-bold uppercase tracking-widest text-text/25 mt-0.5">produtores</div>
+
+          {/* Linha 2: chips de bioma + cultura (scroll horizontal) */}
+          <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-0.5" style={{ scrollbarWidth: "none" }}>
+            {Object.entries(BIOME_CONFIG).map(([key, cfg]) => {
+              const active = selectedBiome === key;
+              return (
+                <button key={key} onClick={() => setSelectedBiome(active ? null : key)}
+                  style={active ? { background: cfg.color, borderColor: cfg.color, color: "#0A0A0A" } : {}}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-all shrink-0 ${active ? "" : "border-white/12 text-text/60 hover:border-white/25 hover:text-text"}`}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? "#0A0A0A" : cfg.color }} />
+                  {cfg.label}
+                </button>
+              );
+            })}
+            <span className="w-px bg-white/10 mx-1 shrink-0" />
+            {allCrops.map(c => {
+              const active = selectedCrop === c;
+              return (
+                <button key={c} onClick={() => setSelectedCrop(active ? null : c)}
+                  className={`px-3.5 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-all shrink-0 ${active ? "bg-accent text-bg border-accent" : "border-white/12 text-text/60 hover:border-white/25 hover:text-text"}`}>
+                  {c}
+                </button>
+              );
+            })}
+            {hasFilters && (
+              <button onClick={() => { setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
+                className="shrink-0 px-3.5 py-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors underline underline-offset-4">
+                Limpar tudo
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── Mapa ── */}
-      <div ref={mapSectionRef} className="relative mx-0" style={{ height: 260, isolation: "isolate" }}>
-        <div ref={mapRef} className="w-full h-full" />
+      {/* ── Mapa (colapsável) ── */}
+      {showMap && (
+        <div ref={mapSectionRef} className="relative mx-0" style={{ height: 320, isolation: "isolate" }}>
+          <div ref={mapRef} className="w-full h-full" />
 
-        {/* Popup fazenda selecionada */}
-        {activeEntry && (() => {
-          const cfg = BIOME_CONFIG[activeEntry.biome] || BIOME_CONFIG["cerrado"];
-          return (
-            <div className="absolute bottom-3 left-3 right-3 z-[500]">
-              <div style={{ background: "rgba(10,10,10,0.95)", backdropFilter: "blur(12px)", borderTop: `2px solid ${cfg.color}` }}
-                className="rounded-xl p-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p style={{ color: cfg.color }} className="text-[7px] font-black uppercase tracking-widest mb-0.5">{cfg.label} · {activeEntry.location}</p>
-                  <p className="text-[13px] font-black uppercase tracking-tight text-white leading-tight truncate">{activeEntry.farmName}</p>
-                  <div className="flex gap-1 flex-wrap mt-1">
-                    {activeEntry.products.slice(0, 3).map((p, i) => (
-                      <span key={i} className="text-[7px] font-bold uppercase text-white/40 border border-white/12 px-1.5 py-0.5 rounded-full">{p}</span>
-                    ))}
-                    {activeEntry.area > 0 && <span style={{ color: cfg.color }} className="text-[7px] font-black">~{activeEntry.area.toLocaleString("pt-BR")} ha</span>}
+          {/* Popup fazenda selecionada (Airbnb-style mini-card) */}
+          {activeEntry && (() => {
+            const cfg = BIOME_CONFIG[activeEntry.biome] || BIOME_CONFIG["cerrado"];
+            return (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[500] w-[min(420px,calc(100%-2rem))]">
+                <div className="rounded-2xl bg-bg/95 backdrop-blur-xl border border-white/15 shadow-2xl overflow-hidden">
+                  <div className="flex items-stretch gap-3 p-3">
+                    <div className="w-16 h-16 rounded-xl overflow-hidden bg-white/5 border border-white/10 shrink-0">
+                      {activeEntry.cover || activeEntry.logo
+                        ? <img src={activeEntry.cover || activeEntry.logo} className="w-full h-full object-cover" alt="" />
+                        : <div className="w-full h-full flex items-center justify-center text-text/40 font-bold">{activeEntry.farmName.slice(0, 2).toUpperCase()}</div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span style={{ background: cfg.color }} className="w-1.5 h-1.5 rounded-full" />
+                        <span className="text-[10px] font-semibold text-text/50">{cfg.label}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-text leading-tight truncate">{activeEntry.farmName}</p>
+                      <p className="text-xs text-text/50 mt-0.5 truncate">
+                        {activeEntry.location}{activeEntry.area > 0 ? ` · ${activeEntry.area.toLocaleString("pt-BR")} ha` : ""}
+                      </p>
+                    </div>
+                    <button onClick={() => setActiveEntry(null)} className="self-start text-text/40 hover:text-text"><X size={16} /></button>
                   </div>
-                </div>
-                <div className="flex flex-col gap-1.5 shrink-0">
                   {activeEntry.isReal && (
                     <button onClick={() => {
                       setViewingFarmId(activeEntry.id ?? null);
                       if (activeEntry.id) navigate(`/fazenda/${encodeURIComponent(activeEntry.id)}`);
                       else go(5);
-                    }} style={{ background: "#E0FF22", color: "#111" }}
-                      className="py-1.5 px-3 text-[8px] font-black uppercase tracking-widest rounded-lg whitespace-nowrap">
-                      Ver perfil →
+                    }}
+                      className="w-full py-2.5 bg-accent text-bg text-xs font-bold hover:bg-accent/90 transition-colors">
+                      Ver perfil completo →
                     </button>
                   )}
-                  <button onClick={() => setActiveEntry(null)} className="text-white/30 hover:text-white transition-colors flex items-center justify-center">
-                    <X size={14} />
-                  </button>
                 </div>
               </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* ── Filtros ── */}
-      <div className="sticky top-0 z-50 bg-bg/95 backdrop-blur border-b border-text/8 px-4 py-3 flex items-center gap-3">
-        {/* Busca */}
-        <div className="flex items-center gap-2 flex-1 bg-white/5 border border-white/8 rounded-xl px-3 py-2">
-          <Search size={10} className="text-text/30 shrink-0" />
-          <input
-            type="text"
-            value={locationSearch}
-            onChange={e => setLocationSearch(e.target.value)}
-            placeholder="Buscar fazenda ou região..."
-            className="flex-1 bg-transparent text-[11px] text-text placeholder:text-text/25 outline-none"
-          />
-          {locationSearch && <button onClick={() => setLocationSearch("")}><X size={10} className="text-text/30" /></button>}
+            );
+          })()}
         </div>
+      )}
 
-        {/* Filtro cultura */}
-        <div className="overflow-x-auto shrink-0" style={{ scrollbarWidth: "none", maxWidth: "40vw" }}>
-          <div className="flex gap-1.5">
-            {[null, ...allCrops].map(c => {
-              const active = c === null ? !selectedCrop : selectedCrop === c;
-              return (
-                <button key={c ?? "all"} onClick={() => setSelectedCrop(c === null ? null : selectedCrop === c ? null : c)}
-                  className={`px-2.5 py-1.5 text-[8px] font-black uppercase tracking-widest rounded-full border transition-all whitespace-nowrap ${active ? "bg-accent text-bg border-accent" : "bg-transparent border-white/12 text-text/35 hover:border-white/25"}`}>
-                  {c ?? "Todas"}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {hasFilters && (
-          <button onClick={() => { setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
-            className="shrink-0 text-[8px] font-bold uppercase tracking-widest text-accent hover:text-accent/70 transition-colors">
-            Limpar
-          </button>
-        )}
-      </div>
-
-      {/* ── Filtros de bioma ── */}
-      <div className="px-4 py-3 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-        {Object.entries(BIOME_CONFIG).map(([key, cfg]) => {
-          const active = selectedBiome === key;
-          return (
-            <button key={key} onClick={() => setSelectedBiome(active ? null : key)}
-              style={active ? { background: cfg.color + "20", borderColor: cfg.color, color: cfg.color } : {}}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[8px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${active ? "" : "border-white/10 text-text/30 hover:border-white/20"}`}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: active ? cfg.color : cfg.color + "80" }} />
-              {cfg.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Grid de cards ── */}
-      <div className="px-4 pb-16">
+      {/* ── Grid de cards Airbnb-style ── */}
+      <div className="max-w-6xl mx-auto px-5 md:px-8 pt-6 pb-20">
         {filtered.length === 0 ? (
           <div className="py-24 text-center">
-            <p className="text-[11px] font-black uppercase tracking-widest text-text/20 mb-4">Nenhuma fazenda encontrada</p>
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
+              <Search size={20} className="text-text/30" />
+            </div>
+            <p className="text-base font-semibold text-text/70 mb-2">Nenhuma fazenda encontrada</p>
+            <p className="text-sm text-text/40 mb-5">Tente ajustar os filtros ou buscar por outra região.</p>
             <button onClick={() => { setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
-              className="text-[9px] font-bold uppercase tracking-widest text-accent hover:underline">Limpar filtros</button>
+              className="px-5 py-2.5 rounded-full bg-accent text-bg text-xs font-bold hover:bg-accent/90 transition-colors">
+              Limpar filtros
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-8">
             {filtered.map((f, i) => {
               const cfg = BIOME_CONFIG[f.biome] || BIOME_CONFIG["cerrado"];
+              const cover = f.cover || f.logo;
               const isActive = activeEntry?.farmName === f.farmName;
               return (
-                <motion.div key={f.farmName} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
-                  onClick={() => selectEntry(f)}
-                  className={`relative rounded-2xl border overflow-hidden cursor-pointer transition-all ${isActive ? "border-accent/50 bg-accent/5" : "border-white/8 bg-white/2 hover:border-white/18 hover:bg-white/4"}`}>
-                  {/* Topo colorido bioma */}
-                  <div style={{ height: 3, background: cfg.color }} />
-
-                  <div className="p-3.5">
-                    {/* Logo + nome */}
-                    <div className="flex items-start gap-2.5 mb-3">
-                      <div className="w-9 h-9 rounded-xl overflow-hidden border border-white/10 flex items-center justify-center bg-white/5 shrink-0">
-                        {f.logo
-                          ? <img src={f.logo} className="w-full h-full object-cover" alt="" />
-                          : <span className="text-[10px] font-black text-text/30 uppercase">{f.farmName.slice(0, 2)}</span>}
+                <motion.div
+                  key={f.id ?? `${f.farmName}-${i}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                  onClick={() => {
+                    if (f.isReal) {
+                      setViewingFarmId(f.id ?? null);
+                      if (f.id) navigate(`/fazenda/${encodeURIComponent(f.id)}`);
+                      else go(5);
+                    } else {
+                      selectEntry(f);
+                    }
+                  }}
+                  className="group cursor-pointer"
+                >
+                  {/* Cover image 16:9 */}
+                  <div className={`relative w-full aspect-[5/4] rounded-2xl overflow-hidden bg-white/5 border ${isActive ? "border-accent/50" : "border-white/8"} transition-all group-hover:border-white/20`}>
+                    {cover ? (
+                      <img
+                        src={cover}
+                        alt={f.farmName}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${cfg.color}22, ${cfg.color}08)` }}>
+                        <span className="text-4xl font-black text-text/20 uppercase tracking-tight">{f.farmName.slice(0, 2)}</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-black uppercase tracking-tight text-text leading-tight truncate">{f.farmName}</p>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <MapPin size={7} className="text-text/25 shrink-0" />
-                          <span className="text-[8px] text-text/30 truncate">{f.location}</span>
+                    )}
+
+                    {/* Top-left: bioma badge */}
+                    <div className="absolute top-3 left-3">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/10">
+                        <span style={{ background: cfg.color }} className="w-1.5 h-1.5 rounded-full" />
+                        <span className="text-[10px] font-semibold text-white">{cfg.label}</span>
+                      </div>
+                    </div>
+
+                    {/* Top-right: EUDR badge */}
+                    {f.certs.some(c => c.toLowerCase().includes("eudr")) && (
+                      <div className="absolute top-3 right-3">
+                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent/95 text-bg">
+                          <ShieldCheck size={10} strokeWidth={2.5} />
+                          <span className="text-[10px] font-bold">EUDR</span>
                         </div>
                       </div>
-                    </div>
+                    )}
 
-                    {/* Culturas */}
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      {f.products.slice(0, 2).map((p, j) => (
-                        <span key={j} className={`text-[7px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full border transition-all ${selectedCrop === p ? "bg-accent text-bg border-accent" : "border-white/12 text-text/35"}`}>{p}</span>
-                      ))}
-                      {f.products.length > 2 && <span className="text-[7px] text-text/20 font-bold">+{f.products.length - 2}</span>}
-                    </div>
+                    {/* Bottom: produto chips */}
+                    {f.products.length > 0 && (
+                      <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
+                        {f.products.slice(0, 3).map((p, j) => (
+                          <span key={j} className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md border border-white/12 text-[10px] font-medium text-white">
+                            {p}
+                          </span>
+                        ))}
+                        {f.products.length > 3 && (
+                          <span className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md border border-white/12 text-[10px] font-medium text-white/70">
+                            +{f.products.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-                    {/* Rodapé: bioma + área */}
-                    <div className="flex items-center justify-between mb-2.5">
-                      <span style={{ color: cfg.color }} className="text-[7px] font-black uppercase tracking-widest">{cfg.label}</span>
-                      {f.area > 0 && <span className="text-[8px] font-black text-text/40">~{f.area.toLocaleString("pt-BR")} ha</span>}
+                  {/* Content below image */}
+                  <div className="pt-3 px-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-[15px] font-semibold text-text leading-snug line-clamp-1">
+                        {f.farmName}
+                      </h3>
+                      {f.isReal && (
+                        <span className="shrink-0 mt-0.5 text-[10px] font-bold text-accent">●</span>
+                      )}
                     </div>
+                    <p className="text-sm text-text/55 mt-0.5 truncate">
+                      {f.location}
+                      {f.area > 0 && <span> · {f.area.toLocaleString("pt-BR")} ha</span>}
+                    </p>
+                    {f.description && (
+                      <p className="text-xs text-text/40 mt-1.5 line-clamp-2 leading-relaxed">
+                        {f.description}
+                      </p>
+                    )}
 
-                    {/* Proposta — só para não-produtores logados */}
+                    {/* Action: enviar proposta para compradores */}
                     {isComprador && (
                       <button
                         onClick={e => { e.stopPropagation(); setPropForm({ message: "", volume: "", products: [] }); setProposalTarget(f); }}
-                        className="w-full mt-1 py-2 text-[8px] font-black uppercase tracking-widest border border-accent/40 text-accent rounded-xl hover:bg-accent/10 transition-colors"
+                        className="mt-3 w-full py-2 rounded-full border border-white/15 text-xs font-semibold text-text/80 hover:border-accent/50 hover:text-accent transition-colors"
                       >
-                        Enviar Proposta
+                        Enviar proposta
                       </button>
                     )}
                   </div>
@@ -2817,8 +2879,8 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
         )}
 
         {filtered.length > 0 && (
-          <p className="text-center text-[7px] font-bold uppercase tracking-widest text-text/15 mt-8">
-            {filtered.length} fazenda{filtered.length !== 1 ? "s" : ""} · Quem Produz
+          <p className="text-center text-xs text-text/30 mt-12">
+            {filtered.length} {filtered.length === 1 ? "fazenda exibida" : "fazendas exibidas"} · Quem Produz
           </p>
         )}
       </div>
