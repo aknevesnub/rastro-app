@@ -4499,19 +4499,21 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         </div>
       )}
 
-      {/* ── QR Code CTA ── */}
-      <div className="px-6 md:px-10 py-6 border-b border-white/10 max-w-5xl mx-auto">
-        <div className="border border-accent/40 p-4 flex items-center gap-4 bg-accent/5 cursor-pointer rounded-2xl hover:border-accent/70 transition-colors" onClick={() => go(10)}>
-          <div className="w-12 h-12 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center text-accent shrink-0">
-            <QrCode size={24} />
+      {/* ── QR Code CTA — só na visão do próprio dono autenticado ── */}
+      {!isViewingOther && user && (
+        <div className="px-6 md:px-10 py-6 border-b border-white/10 max-w-5xl mx-auto">
+          <div className="border border-accent/40 p-4 flex items-center gap-4 bg-accent/5 cursor-pointer rounded-2xl hover:border-accent/70 transition-colors" onClick={() => go(10)}>
+            <div className="w-12 h-12 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center text-accent shrink-0">
+              <QrCode size={24} />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs font-black uppercase tracking-wide text-text mb-0.5">QR Code de Rastreio</div>
+              <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">Scan to verify authenticity · Escaneie para verificar</div>
+            </div>
+            <ChevronRight size={16} className="text-accent shrink-0" />
           </div>
-          <div className="flex-1">
-            <div className="text-xs font-black uppercase tracking-wide text-text mb-0.5">QR Code de Rastreio</div>
-            <div className="text-[9px] font-bold uppercase tracking-widest text-white/40">Scan to verify authenticity · Escaneie para verificar</div>
-          </div>
-          <ChevronRight size={16} className="text-accent shrink-0" />
         </div>
-      </div>
+      )}
 
       {/* ── Activity Timeline ── */}
       <div className="px-6 md:px-10 py-6 max-w-5xl mx-auto">
@@ -6493,7 +6495,11 @@ const AppContent = () => {
     if (user && (s === 0 || s === 1 || s === 2)) {
       navigate("/app", { replace: true });
     }
-  }, [user, s, navigate]);
+    // Auth guard: rotas /app/* exigem usuário logado — redireciona pra login
+    if (!user && location.pathname.startsWith("/app")) {
+      navigate("/login", { replace: true });
+    }
+  }, [user, s, navigate, location.pathname]);
 
   const handleLogout = () => { logout(); navigate("/"); };
 
