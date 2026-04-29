@@ -12,6 +12,7 @@ import { lotsRouter } from "./routes/lots";
 import { photosRouter } from "./routes/photos";
 import { practicesRouter } from "./routes/practices";
 import { webhookRouter } from "./routes/webhook";
+import { sitemapRouter } from "./routes/sitemap";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -73,6 +74,9 @@ app.use("/api/lots", lotsRouter);
 app.use("/api/photos", photosRouter);
 app.use("/api/practices", practicesRouter);
 app.use("/api/webhook", webhookRouter);
+
+// ── Sitemap (não tem prefixo /api porque é exposto na raiz via Vercel rewrite) ─
+app.use("/", sitemapRouter);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) =>

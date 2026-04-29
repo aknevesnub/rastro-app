@@ -5,6 +5,7 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "rewrites": [
+    { "source": "/sitemap.xml", "destination": "https://rastro-app-production.up.railway.app/sitemap.xml" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

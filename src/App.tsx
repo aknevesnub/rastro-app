@@ -60,6 +60,7 @@ type SEOProps = {
   image?: string;         // og:image absoluta
   type?: "website" | "article" | "profile";
   noindex?: boolean;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];  // Schema.org structured data
 };
 
 function setMetaByName(name: string, content: string) {
@@ -89,8 +90,21 @@ function setCanonical(href: string) {
   }
   el.setAttribute("href", href);
 }
+function setJsonLd(data: Record<string, unknown> | Record<string, unknown>[] | null) {
+  // Remove existentes da rota anterior
+  document.head.querySelectorAll('script[type="application/ld+json"][data-route]').forEach(s => s.remove());
+  if (!data) return;
+  const items = Array.isArray(data) ? data : [data];
+  for (const item of items) {
+    const s = document.createElement("script");
+    s.type = "application/ld+json";
+    s.setAttribute("data-route", "true");
+    s.textContent = JSON.stringify(item);
+    document.head.appendChild(s);
+  }
+}
 
-function useSEO({ title, description, path, image, type = "website", noindex }: SEOProps) {
+function useSEO({ title, description, path, image, type = "website", noindex, jsonLd }: SEOProps) {
   useEffect(() => {
     const fullTitle = /quem\s*produz/i.test(title) ? title : `${title} — Quem Produz`;
     const url = `https://quemproduz.com${path ?? (typeof window !== "undefined" ? window.location.pathname : "/")}`;
@@ -111,7 +125,9 @@ function useSEO({ title, description, path, image, type = "website", noindex }: 
     setMetaByName("twitter:title", fullTitle);
     setMetaByName("twitter:description", description);
     setMetaByName("twitter:image", ogImage);
-  }, [title, description, path, image, type, noindex]);
+
+    setJsonLd(jsonLd ?? null);
+  }, [title, description, path, image, type, noindex, JSON.stringify(jsonLd ?? null)]);
 }
 
 // ─────────────────────────────────────────────
@@ -2895,6 +2911,29 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
     title: "Quem Produz — Vitrine Digital do Agro",
     description: "A vitrine digital do agronegócio brasileiro. Crie seu perfil em 5 minutos, organize lotes com QR rastreável e conecte sua fazenda a compradores no Brasil e na Europa. Conformidade EUDR, 100% grátis.",
     path: "/",
+    jsonLd: [
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: "Quem Produz",
+        url: "https://quemproduz.com",
+        logo: "https://quemproduz.com/og-default.png",
+        description: "Vitrine digital do agronegócio brasileiro com rastreabilidade EUDR.",
+        sameAs: [],
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        name: "Quem Produz",
+        url: "https://quemproduz.com",
+        inLanguage: "pt-BR",
+        potentialAction: {
+          "@type": "SearchAction",
+          target: "https://quemproduz.com/vitrine?q={search_term_string}",
+          "query-input": "required name=search_term_string",
+        },
+      },
+    ],
   });
   const heroRef = useRef<HTMLDivElement>(null);
   const farmsRef = useRef<HTMLDivElement>(null);
@@ -4224,7 +4263,34 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const displayLogo = isViewingOther ? viewedFarm?.logoUrl : user?.logo;
   const displayLogoTransform = isViewingOther ? viewedFarm?.logoTransform : user?.logoTransform;
 
+  const displayProducts = isViewingOther
+    ? (viewedFarm?.products?.map(p => p.name) ?? [])
+    : (user?.products ?? []);
+  const displayCerts = isViewingOther
+    ? (viewedFarm?.certs?.map(c => c.name) ?? [])
+    : (user?.certs ?? []);
+
   // SEO dinâmico — só quando estiver vendo perfil público de outra fazenda
+  const farmJsonLd = (isViewingOther && viewingFarmId && displayFarmName) ? {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    "@id": `https://quemproduz.com/fazenda/${viewingFarmId}`,
+    name: displayFarmName,
+    url: `https://quemproduz.com/fazenda/${viewingFarmId}`,
+    description: displayDescription || `${displayFarmName} — fazenda brasileira com rastreabilidade EUDR na Quem Produz.`,
+    image: displayCover || displayLogo || "https://quemproduz.com/og-default.png",
+    logo: displayLogo || "https://quemproduz.com/og-default.png",
+    address: displayLocation ? {
+      "@type": "PostalAddress",
+      addressLocality: displayLocation,
+      addressCountry: "BR",
+    } : undefined,
+    makesOffer: displayProducts.length > 0 ? displayProducts.map((p: string) => ({
+      "@type": "Offer",
+      itemOffered: { "@type": "Product", name: p },
+    })) : undefined,
+  } : null;
+
   useSEO({
     title: isViewingOther
       ? (displayFarmName ? `${displayFarmName}${displayLocation ? " — " + displayLocation : ""}` : "Perfil da fazenda")
@@ -4238,13 +4304,8 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
     image: isViewingOther && displayCover ? displayCover : (displayLogo || undefined),
     type: "profile",
     noindex: !isViewingOther,
+    jsonLd: farmJsonLd ?? undefined,
   });
-  const displayProducts = isViewingOther
-    ? (viewedFarm?.products?.map(p => p.name) ?? [])
-    : (user?.products ?? []);
-  const displayCerts = isViewingOther
-    ? (viewedFarm?.certs?.map(c => c.name) ?? [])
-    : (user?.certs ?? []);
   // Práticas declaradas (autodeclaração) — vêm já filtradas por active=true do backend
   const [myPractices, setMyPractices] = useState<import("./services/api").ApiPractice[]>([]);
   useEffect(() => {
@@ -5129,6 +5190,26 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
   const seoCrop = apiLot?.crop ?? localLot?.crop ?? "";
   const seoLocation = apiLot?.user.location ?? localUser?.location ?? "";
   const seoCover = apiLot?.photos?.[0]?.url ?? (localLot?.photos?.[0] || undefined);
+  const lotJsonLd = (seoLotName && (apiLot || localLot)) ? {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "@id": `https://quemproduz.com/lote/${lotId}`,
+    name: `${seoLotName}${seoCrop ? " — " + seoCrop : ""}`,
+    description: `Lote rastreável de ${seoFarmName || "fazenda brasileira"}${seoLocation ? " em " + seoLocation : ""}. Origem certificada via QR e conformidade EUDR.`,
+    category: seoCrop || "Agricultural product",
+    image: seoCover ? [seoCover] : ["https://quemproduz.com/og-default.png"],
+    url: `https://quemproduz.com/lote/${lotId}`,
+    brand: seoFarmName ? { "@type": "Brand", name: seoFarmName } : undefined,
+    manufacturer: seoFarmName ? {
+      "@type": "Organization",
+      name: seoFarmName,
+      address: seoLocation ? {
+        "@type": "PostalAddress",
+        addressLocality: seoLocation,
+        addressCountry: "BR",
+      } : undefined,
+    } : undefined,
+  } : null;
   useSEO({
     title: seoLotName && seoFarmName ? `${seoLotName} — ${seoFarmName}` : "Lote rastreável — Quem Produz",
     description: seoLotName
@@ -5137,6 +5218,7 @@ const SLotPublico = ({ lotId, go }: { lotId: string; go: (s: number) => void }) 
     path: `/lote/${lotId}`,
     image: seoCover,
     type: "article",
+    jsonLd: lotJsonLd ?? undefined,
   });
 
   if (loading) {

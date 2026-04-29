@@ -1,0 +1,22 @@
+# Quem Produz — robots.txt
+# https://quemproduz.com
+
+User-agent: *
+Allow: /
+Allow: /cadastro
+Allow: /vitrine
+Allow: /planos
+Allow: /fazenda/
+Allow: /lote/
+
+# Áreas autenticadas — não indexar
+Disallow: /app/
+Disallow: /login
+
+# URLs antigas com query string — não indexar (já redirecionam)
+Disallow: /*?lot=
+
+# APIs do backend (caso sejam expostas via rewrite)
+Disallow: /api/
+
+Sitemap: https://quemproduz.com/sitemap.xml
