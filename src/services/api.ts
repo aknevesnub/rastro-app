@@ -290,6 +290,8 @@ export const photos = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export type ProfileMode = "commodity" | "produto";
+
 export interface ApiUser {
   id: string;
   email: string;
@@ -303,10 +305,29 @@ export interface ApiUser {
   coverUrl?: string;
   logoTransform?: { scale: number; x: number; y: number };
   coverTransform?: { scale: number; x: number; y: number };
+  profileMode?: ProfileMode;
   products?: { id: string; name: string }[];
   certs?: { id: string; name: string }[];
   practices?: ApiPractice[];
+  /**
+   * Lotes públicos da fazenda — só vêm preenchidos no GET /api/farms/:id
+   * (visualização pública). Em /me ou na lista geral fica undefined.
+   * Campos cuidadosamente expostos: nada que não esteja já em /lots/public/:id.
+   */
+  lots?: ApiPublicLot[];
   createdAt?: string;
+}
+
+export interface ApiPublicLot {
+  id: string;
+  name: string;
+  crop: string;
+  area?: number | null;
+  status: string;
+  eudrCompliant: boolean;
+  harvestDate?: string | null;
+  expiryDate?: string | null;
+  geoPolygon?: { lat: number; lng: number }[] | null;
 }
 
 export interface ApiPractice {

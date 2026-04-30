@@ -34,6 +34,7 @@ const PUBLIC_SELECT = {
   logoTransform: true,
   coverTransform: true,
   plan: true,
+  profileMode: true,
   createdAt: true,
   products: true,
   certs: true,
@@ -93,7 +94,17 @@ farmsRouter.get("/:id", async (req, res) => {
       select: {
         ...PUBLIC_SELECT,
         lots: {
-          select: { id: true, name: true, crop: true, area: true, eudrCompliant: true, status: true },
+          select: {
+            id: true,
+            name: true,
+            crop: true,
+            area: true,
+            eudrCompliant: true,
+            status: true,
+            geoPolygon: true,
+            harvestDate: true,
+            expiryDate: true,
+          },
           orderBy: { createdAt: "desc" },
         },
       },
@@ -113,9 +124,15 @@ farmsRouter.put("/me", authenticate, async (req: AuthRequest, res) => {
       farmName, name, phone, location, area, description,
       logoUrl, coverUrl, logoTransform, coverTransform,
       isPublic,    // produtor pode controlar visibilidade
+      profileMode, // "commodity" | "produto" — direciona apresentação do perfil público
       products, certs,
       // NOTA: `plan` NÃO aceito aqui — só muda via webhook de pagamento
     } = req.body;
+
+    // Whitelist de profileMode (não confiar no que vem do cliente)
+    if (profileMode !== undefined && profileMode !== "commodity" && profileMode !== "produto") {
+      return res.status(400).json({ error: "profileMode inválido" });
+    }
 
     // Validação de tamanho dos campos livres
     if (farmName !== undefined && String(farmName).trim().length > 100)
@@ -160,6 +177,7 @@ farmsRouter.put("/me", authenticate, async (req: AuthRequest, res) => {
         ...(logoTransform !== undefined && { logoTransform }),
         ...(coverTransform !== undefined && { coverTransform }),
         ...(isPublic !== undefined && { isPublic: Boolean(isPublic) }),
+        ...(profileMode !== undefined && { profileMode }),
       },
     });
 

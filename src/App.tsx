@@ -408,6 +408,10 @@ interface AppUser {
   isPublic?: boolean; // default true — aparecer no mapa e vitrine da landing
   // Sede da fazenda
   farmPin?: [number, number]; // coordenada GPS da sede principal
+  // Modo do perfil público — define a hierarquia de seções
+  // "commodity": fazenda de grãos/café verde/gado — prova sobre narrativa (EUDR, certs, área)
+  // "produto":   fazenda de produto envasado/processado — narrativa sobre prova (história, produtos, terroir)
+  profileMode?: "commodity" | "produto";
 }
 
 interface AppEvent {
@@ -642,6 +646,7 @@ const mergeApiUserIntoLocal = (apiUser: api.ApiUser, local: AppUser | null): App
   coverTransform: apiUser.coverTransform ?? local?.coverTransform,
   products: (apiUser.products ?? []).map(p => p.name).length > 0 ? (apiUser.products ?? []).map(p => p.name) : (local?.products ?? []),
   certs: (apiUser.certs ?? []).map(c => c.name).length > 0 ? (apiUser.certs ?? []).map(c => c.name) : (local?.certs ?? []),
+  profileMode: apiUser.profileMode ?? local?.profileMode,
   password: local?.password ?? "", // senha fica no servidor; localmente vazio
 });
 
@@ -767,6 +772,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
         coverUrl: d.cover,
         logoTransform: d.logoTransform,
         coverTransform: d.coverTransform,
+        profileMode: d.profileMode,
         products: d.products,
         certs: d.certs,
       }).catch(() => { /* silencioso \u2014 localStorage j\u00e1 salvou */ });
@@ -1683,6 +1689,50 @@ const LeafletMap = ({ points, height = 300, zoom = 14 }: { points: [number, numb
   return <div ref={containerRef} style={{ height, width: "100%" }} />;
 };
 
+// ─── Mapa de visão geral de múltiplos lotes (perfil público da fazenda) ───
+// Renderiza N polígonos sobre uma imagem satélite. Auto-fit aos lotes.
+// Não é interativo — só visualização (cliques são deixados para a tela /app/lot).
+const LotsOverviewMap = ({ lots, height = 320 }: {
+  lots: { id: string; name: string; crop: string; area?: number | string; points: [number, number][] }[];
+  height?: number;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    if (lots.length === 0) return;
+    const map = L.map(containerRef.current, {
+      zoomControl: true,
+      attributionControl: false,
+      scrollWheelZoom: false, // evita "sequestrar" o scroll da página
+    }).setView([-15.77972, -47.92972], 5);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
+
+    const allPoints: [number, number][] = [];
+    lots.forEach((lot, idx) => {
+      if (lot.points.length < 3) return;
+      // Cor levemente variada por índice — sem virar arco-íris (mantém paleta accent)
+      const isFirst = idx === 0;
+      const color = isFirst ? "#E0FF22" : "#9FFFA1";
+      L.polygon(lot.points, { color, weight: 2, fillColor: color, fillOpacity: 0.18 })
+        .addTo(map)
+        .bindTooltip(`${lot.name} · ${lot.crop}`, { sticky: true, direction: "top" });
+      lot.points.forEach(p => allPoints.push(p));
+    });
+
+    if (allPoints.length > 0) {
+      try {
+        map.fitBounds(L.latLngBounds(allPoints), { padding: [30, 30], maxZoom: 14, animate: false });
+      } catch { /* ignora bounds inválidos */ }
+    }
+
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; };
+  }, [lots]);
+
+  return <div ref={containerRef} style={{ height, width: "100%" }} />;
+};
+
 // ─── Editor de sede da fazenda (pin único) ───
 const FarmPinDrawer = ({ initialPin, onSave, onClose }: {
   initialPin?: [number, number];
@@ -2398,11 +2448,13 @@ type VitrineEntry = {
   farmName: string; name: string; location: string; biome: string;
   lat: number; lng: number; products: string[]; certs: string[];
   lots: number; area: number; description: string; logo?: string; cover?: string; isReal?: boolean;
+  // Modo do perfil — direciona apresentação. Default commodity para fazendas legadas.
+  profileMode?: "commodity" | "produto";
 };
 
 const VITRINE_DEMO: VitrineEntry[] = [
   { farmName: "Fazenda Santa Clara",      name: "João Carlos Ferreira", location: "Sorriso, MT",           biome: "cerrado",        lat: -12.55, lng: -55.72, products: ["Soja", "Milho"],     certs: ["EUDR ✓", "Orgânico"],             lots: 4, area: 1240, description: "Três gerações cultivando soja e milho com práticas sustentáveis e certificação EUDR." },
-  { farmName: "Cafeicultura Serra Verde",  name: "Ana Lima",             location: "Patrocínio, MG",        biome: "cerrado",        lat: -18.94, lng: -46.99, products: ["Café"],             certs: ["EUDR ✓", "Rainforest Alliance"],   lots: 2, area: 380,  description: "Café especial arábica cultivado em altitude com rastreabilidade total do grão à xícara." },
+  { farmName: "Cafeicultura Serra Verde",  name: "Ana Lima",             location: "Patrocínio, MG",        biome: "cerrado",        lat: -18.94, lng: -46.99, products: ["Café"],             certs: ["EUDR ✓", "Rainforest Alliance"],   lots: 2, area: 380,  description: "Café especial arábica cultivado em altitude com rastreabilidade total do grão à xícara.", profileMode: "produto" },
   { farmName: "Agropecuária Cerrado",     name: "Roberto Alves",        location: "Barreiras, BA",         biome: "cerrado",        lat: -12.15, lng: -44.98, products: ["Pecuária", "Soja"], certs: ["EUDR ✓"],                          lots: 6, area: 3200, description: "Pecuária extensiva e soja com mapeamento completo e verificação PRODES/INPE." },
   { farmName: "Fazenda Horizonte Novo",   name: "Marcos Souza",         location: "Lucas do Rio Verde, MT",biome: "cerrado",        lat: -13.05, lng: -55.90, products: ["Algodão", "Cana"],  certs: ["EUDR ✓", "RTRS"],                  lots: 3, area: 870,  description: "Produção de algodão e cana com tecnologia de precisão e rastreabilidade digital." },
   { farmName: "Fazenda Amazônica Verde",  name: "Pedro Santos",         location: "Santarém, PA",          biome: "amazônia",       lat: -2.44,  lng: -54.70, products: ["Cacau", "Açaí"],   certs: ["EUDR ✓", "Orgânico"],              lots: 5, area: 950,  description: "Cacau e açaí nativos com manejo sustentável da floresta e certificação orgânica." },
@@ -2410,8 +2462,8 @@ const VITRINE_DEMO: VitrineEntry[] = [
   { farmName: "Sítio Caatinga Forte",    name: "Maria Oliveira",        location: "Petrolina, PE",         biome: "caatinga",       lat: -9.38,  lng: -40.50, products: ["Manga", "Uva"],    certs: ["EUDR ✓"],                          lots: 2, area: 180,  description: "Fruticultura irrigada no Vale do São Francisco com exportação certificada para a Europa." },
   { farmName: "Estância Pampa Real",     name: "Carlos Gaúcho",         location: "Bagé, RS",              biome: "pampa",          lat: -31.33, lng: -54.10, products: ["Pecuária", "Arroz"], certs: ["EUDR ✓"],                        lots: 4, area: 2100, description: "Pecuária extensiva do Pampa gaúcho com rastreabilidade individual brinco a prato." },
   { farmName: "Fazenda Pantanal Vivo",   name: "Ana Beatriz Costa",     location: "Corumbá, MS",           biome: "pantanal",       lat: -18.99, lng: -57.65, products: ["Pecuária"],        certs: ["EUDR ✓"],                          lots: 3, area: 5400, description: "Pecuária pantaneira com práticas de conservação do maior wetland tropical do mundo." },
-  { farmName: "Fazenda Mata Verde",      name: "Lucas Morais",           location: "Ilhéus, BA",            biome: "mata atlântica", lat: -14.79, lng: -39.04, products: ["Cacau", "Café"],   certs: ["EUDR ✓", "Rainforest Alliance"],   lots: 2, area: 420,  description: "Cacau e café à sombra da Mata Atlântica baiana com certificação internacional." },
-  { farmName: "Sítio Serra Gaúcha",      name: "Pietro Bortolini",      location: "Bento Gonçalves, RS",   biome: "mata atlântica", lat: -29.17, lng: -51.52, products: ["Uva", "Vinho"],    certs: ["EUDR ✓"],                          lots: 2, area: 65,   description: "Viticultura de altitude na Serra Gaúcha produzindo uvas finas para vinhos premiados." },
+  { farmName: "Fazenda Mata Verde",      name: "Lucas Morais",           location: "Ilhéus, BA",            biome: "mata atlântica", lat: -14.79, lng: -39.04, products: ["Cacau", "Café"],   certs: ["EUDR ✓", "Rainforest Alliance"],   lots: 2, area: 420,  description: "Cacau e café à sombra da Mata Atlântica baiana com certificação internacional.", profileMode: "produto" },
+  { farmName: "Sítio Serra Gaúcha",      name: "Pietro Bortolini",      location: "Bento Gonçalves, RS",   biome: "mata atlântica", lat: -29.17, lng: -51.52, products: ["Uva", "Vinho"],    certs: ["EUDR ✓"],                          lots: 2, area: 65,   description: "Viticultura de altitude na Serra Gaúcha produzindo uvas finas para vinhos premiados.", profileMode: "produto" },
   { farmName: "Fazenda Cerrado Norte",   name: "Renata Melo",            location: "Brasília, DF",          biome: "cerrado",        lat: -15.77, lng: -47.92, products: ["Milho", "Soja"],   certs: ["EUDR ✓"],                          lots: 5, area: 320,  description: "Grãos no coração do Cerrado com tecnologia de precisão e rastreabilidade completa." },
 ];
 
@@ -2429,6 +2481,13 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   const [selectedBiome, setSelectedBiome] = useState<string | null>(null);
   const [selectedCrop, setSelectedCrop] = useState<string | null>(null);
   const [locationSearch, setLocationSearch] = useState("");
+  // Filtro por tipo de fazenda — null = todas; "commodity" = soja/milho/café verde/gado;
+  // "produto" = vinícolas, azeite, café torrado, queijo. Inicializa via ?tipo= na URL.
+  const [selectedMode, setSelectedMode] = useState<"commodity" | "produto" | null>(() => {
+    if (typeof window === "undefined") return null;
+    const q = new URLSearchParams(window.location.search).get("tipo");
+    return q === "commodity" || q === "produto" ? q : null;
+  });
   const [showLabels, setShowLabels] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapSectionRef = useRef<HTMLDivElement>(null);
@@ -2464,6 +2523,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
       description: user.description || "Produtor rural com rastreabilidade certificada.",
       logo: user.logo,
       isReal: true,
+      profileMode: user.profileMode ?? "commodity",
     };
   }, [user]);
 
@@ -2506,6 +2566,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
           logo: f.logoUrl,
           cover: f.coverUrl,
           isReal: true,
+          profileMode: f.profileMode ?? "commodity",
         };
       });
       setBackendFarms(entries);
@@ -2524,12 +2585,15 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   const filtered = useMemo(() => {
     const q = locationSearch.trim().toLowerCase();
     return allEntries.filter(e => {
+      // Modo do perfil: default commodity para entradas sem modo declarado
+      const mode = e.profileMode ?? "commodity";
+      if (selectedMode && mode !== selectedMode) return false;
       if (selectedBiome && e.biome !== selectedBiome) return false;
       if (selectedCrop && !e.products.includes(selectedCrop)) return false;
       if (q && !e.location.toLowerCase().includes(q) && !e.farmName.toLowerCase().includes(q) && !(BIOME_CONFIG[e.biome]?.label.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [allEntries, selectedBiome, selectedCrop, locationSearch]);
+  }, [allEntries, selectedMode, selectedBiome, selectedCrop, locationSearch]);
 
   // Init map only when showMap=true (lazy)
   useEffect(() => {
@@ -2629,7 +2693,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
     if (cfg) leafletRef.current.flyTo(cfg.center, cfg.zoom, { duration: 1.2 });
   }, [selectedBiome]);
 
-  const hasFilters = !!(selectedBiome || selectedCrop || locationSearch.trim());
+  const hasFilters = !!(selectedMode || selectedBiome || selectedCrop || locationSearch.trim());
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg">
@@ -2643,12 +2707,40 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
 
         <div className="flex items-end justify-between gap-4 mb-1">
           <h1 className="text-[22px] md:text-[28px] font-semibold tracking-tight text-text leading-snug">
-            Fazendas com rastreabilidade
+            {selectedMode === "produto"
+              ? "Fazendas com produto pronto"
+              : selectedMode === "commodity"
+                ? "Fazendas commodity"
+                : "Fazendas com rastreabilidade"}
           </h1>
         </div>
         <p className="text-sm text-text/55 mt-1.5">
-          {filtered.length} {filtered.length === 1 ? "fazenda" : "fazendas"} · EUDR e registro digital verificado
+          {selectedMode === "produto"
+            ? "Vinícolas, azeitarias, café torrado, queijos — para distribuidores e mercado premium"
+            : selectedMode === "commodity"
+              ? "Soja, milho, café verde, gado — para traders e exportadores com conformidade EUDR"
+              : `${filtered.length} ${filtered.length === 1 ? "fazenda" : "fazendas"} · EUDR e registro digital verificado`}
         </p>
+
+        {/* Tabs por tipo — escolha o que você procura */}
+        <div className="mt-5 inline-flex items-center gap-1 p-1 rounded-full bg-white/5 border border-white/10">
+          {([
+            { key: null,         label: "Todas" },
+            { key: "commodity",  label: "Commodity" },
+            { key: "produto",    label: "Produto final" },
+          ] as const).map(opt => {
+            const active = selectedMode === opt.key;
+            return (
+              <button
+                key={String(opt.key)}
+                onClick={() => setSelectedMode(opt.key)}
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${active ? "bg-accent text-bg shadow-sm" : "text-text/60 hover:text-text"}`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Barra sticky: busca + filtros ── */}
@@ -2700,7 +2792,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
               );
             })}
             {hasFilters && (
-              <button onClick={() => { setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
+              <button onClick={() => { setSelectedMode(null); setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
                 className="shrink-0 px-3.5 py-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors underline underline-offset-4">
                 Limpar tudo
               </button>
@@ -2764,7 +2856,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
             </div>
             <p className="text-base font-semibold text-text/70 mb-2">Nenhuma fazenda encontrada</p>
             <p className="text-sm text-text/40 mb-5">Tente ajustar os filtros ou buscar por outra região.</p>
-            <button onClick={() => { setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
+            <button onClick={() => { setSelectedMode(null); setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
               className="px-5 py-2.5 rounded-full bg-accent text-bg text-xs font-semibold hover:bg-accent/90 transition-colors">
               Limpar filtros
             </button>
@@ -2839,6 +2931,9 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                         <span className="text-text/45"> registrados</span>
                       </p>
                     )}
+                    <p className="text-[12px] text-text/35 mt-1">
+                      {(f.profileMode ?? "commodity") === "produto" ? "Produto final" : "Commodity"}
+                    </p>
 
                     {isComprador && (
                       <button
@@ -4046,6 +4141,7 @@ const SEditProfile = ({ go }: { go: (s: number) => void }) => {
   const [praticasSustentaveis, setPraticasSustentaveis] = useState<string[]>(user?.praticasSustentaveis || []);
   const [isPublic, setIsPublic] = useState(user?.isPublic !== false); // default true
   const [products, setProducts] = useState<string[]>(user?.products || []);
+  const [profileMode, setProfileMode] = useState<"commodity" | "produto">(user?.profileMode ?? "commodity");
 
   const toggleCert = (c: string) => setCerts(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
   const togglePratica = (p: string) => setPraticasSustentaveis(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
@@ -4053,7 +4149,7 @@ const SEditProfile = ({ go }: { go: (s: number) => void }) => {
 
   const handleSave = () => {
     const ok = saveUser({ ...user!, description: desc, certs, logo, logoTransform, cover, coverTransform, location,
-      car, ccir, matricula, nirf, cnpj, biome, semEmbargo, semTrabalhoEscravo, reservaLegal, appArea, outorgaAgua, projetoTecnico, garantia, inventarioGHG, praticasSustentaveis, isPublic, products });
+      car, ccir, matricula, nirf, cnpj, biome, semEmbargo, semTrabalhoEscravo, reservaLegal, appArea, outorgaAgua, projetoTecnico, garantia, inventarioGHG, praticasSustentaveis, isPublic, products, profileMode });
     if (ok) {
       addToast("Perfil atualizado!");
     } else {
@@ -4072,6 +4168,56 @@ const SEditProfile = ({ go }: { go: (s: number) => void }) => {
       )}
       <TopBar title="Editar perfil" onBack={() => go(3)} />
       <div className="p-5">
+
+        {/* ── Modo do perfil público ── */}
+        {(!user?.role || user.role === "produtor") && (
+          <div className="mb-7">
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Modo do perfil público</label>
+            <p className="text-[11px] text-text/45 mb-4 leading-relaxed">
+              Define como sua fazenda aparece para visitantes. Você pode trocar a qualquer momento.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                {
+                  key: "commodity" as const,
+                  icon: Sprout,
+                  title: "Commodity",
+                  pitch: "Soja, milho, café verde, gado, óleo a granel",
+                  detail: "Para traders, exportadores, importadores. Foco em prova: EUDR, área, certificações.",
+                },
+                {
+                  key: "produto" as const,
+                  icon: Award,
+                  title: "Produto final",
+                  pitch: "Vinho, azeite, café torrado, queijo, mel",
+                  detail: "Para distribuidores premium e mercado gourmet. Foco em narrativa: história, terroir, produtos.",
+                },
+              ].map(opt => {
+                const active = profileMode === opt.key;
+                const Icon = opt.icon;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setProfileMode(opt.key)}
+                    className={`text-left p-4 rounded-2xl border transition-all ${active ? "border-accent bg-accent/8" : "border-white/12 bg-white/[0.02] hover:border-white/25"}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? "bg-accent text-bg" : "bg-white/5 text-text/60"}`}>
+                        <Icon size={15} />
+                      </div>
+                      <span className={`text-sm font-semibold ${active ? "text-text" : "text-text/80"}`}>{opt.title}</span>
+                      {active && <CheckCircle2 size={14} className="text-accent ml-auto" />}
+                    </div>
+                    <p className="text-[12px] text-text/55 mb-1.5 leading-snug">{opt.pitch}</p>
+                    <p className="text-[11px] text-text/40 leading-relaxed">{opt.detail}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="relative mb-6">
           <ImgUploader value={cover} onChange={c => { setCover(c); setCoverTransform({ scale: 1, x: 0, y: 0 }); }}>
             <div className="h-32 bg-white/5 relative overflow-hidden border border-white/10 group">
@@ -4284,8 +4430,28 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
     if (isViewingOther && viewingFarmId) {
       let alive = true;
       api.farms.getById(viewingFarmId)
-        .then(f => { if (alive) setViewedFarm(f); })
-        .catch(() => { if (alive) setViewedFarm(null); });
+        .then(f => {
+          if (!alive) return;
+          setViewedFarm(f);
+          // Lotes públicos vêm embutidos no GET /api/farms/:id
+          const apiLots = (f.lots ?? []) as import("./services/api").ApiPublicLot[];
+          // Mapeia para shape usado no front (status/eudr são opcionais aqui;
+          // só precisamos de id, name, crop, area, polígono pra render)
+          const mapped: import("./services/api").ApiLot[] = apiLots.map(l => ({
+            id: l.id,
+            userId: viewingFarmId,
+            name: l.name,
+            crop: l.crop,
+            area: l.area ?? undefined,
+            harvestDate: l.harvestDate ?? undefined,
+            expiryDate: l.expiryDate ?? undefined,
+            status: l.status,
+            eudrCompliant: l.eudrCompliant,
+            geoPolygon: l.geoPolygon ?? undefined,
+          }));
+          setViewedLots(mapped);
+        })
+        .catch(() => { if (alive) { setViewedFarm(null); setViewedLots([]); } });
       return () => { alive = false; };
     } else {
       setViewedFarm(null);
@@ -4395,6 +4561,20 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
     ? displayProducts
     : [...new Set(displayLots.map(l => l.crop).filter(Boolean))];
 
+  // Modo do perfil: define hierarquia das seções (commodity vs produto premium)
+  // Override via ?mode=produto (útil pra preview do dono antes de salvar)
+  const modeOverride = (() => {
+    if (typeof window === "undefined") return null;
+    const q = new URLSearchParams(window.location.search).get("mode");
+    return q === "produto" || q === "commodity" ? q : null;
+  })();
+  const mode: "commodity" | "produto" = modeOverride ?? (
+    isViewingOther
+      ? ((viewedFarm as { profileMode?: "commodity" | "produto" } | null)?.profileMode ?? "commodity")
+      : (user?.profileMode ?? "commodity")
+  );
+  const isProdutoMode = mode === "produto";
+
   const handleBack = () => {
     if (isViewingOther) {
       setViewingFarmId(null);
@@ -4450,213 +4630,387 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         </div>
       </div>
 
-      {/* ── Hero: cover + photo grid (Airbnb-style) ── */}
-      <div className="max-w-6xl mx-auto px-4 md:px-8 pt-4 md:pt-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-2xl overflow-hidden">
-          {/* Main cover */}
-          <div className="relative aspect-[4/3] md:aspect-[5/4] bg-white/5 group cursor-pointer"
-            onClick={() => hasGallery && setGalleryIdx(0)}>
+      {/* ── Hero ── */}
+      {isProdutoMode ? (
+        // Modo produto: cover editorial fullbleed com nome em destaque sobreposto
+        <div className="relative w-full">
+          <div
+            className="relative w-full aspect-[16/9] md:aspect-[21/9] bg-white/5 overflow-hidden cursor-pointer"
+            onClick={() => hasGallery && setGalleryIdx(0)}
+          >
             {displayCover
-              ? <img src={displayCover} alt={displayFarmName} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} className="transition-transform duration-500 group-hover:scale-[1.02]" />
+              ? <img src={displayCover} alt={displayFarmName} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} />
               : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/15 to-bg">
-                  <span className="text-6xl font-black text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
+                  <span className="text-7xl font-medium text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
                 </div>}
+            {/* Gradient bottom para legibilidade do nome */}
+            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-bg via-bg/60 to-transparent pointer-events-none" />
+            {hasGallery && (
+              <button onClick={(e) => { e.stopPropagation(); setGalleryIdx(0); }}
+                className="absolute bottom-4 right-4 px-3.5 py-2 rounded-full bg-bg/90 backdrop-blur-sm text-text text-xs font-medium hover:bg-bg transition-colors flex items-center gap-1.5">
+                <ImageIcon size={12} /> {allPhotos.length} {allPhotos.length === 1 ? "foto" : "fotos"}
+              </button>
+            )}
           </div>
-
-          {/* Photo grid 2x2 (desktop only) */}
-          {hasGallery && (
-            <div className="hidden md:grid grid-cols-2 grid-rows-2 gap-2">
-              {heroPhotos.slice(0, 4).map((p, i) => (
-                <button key={i} onClick={() => setGalleryIdx(i)}
-                  className="relative bg-white/5 overflow-hidden group">
-                  <img src={p.src} alt={p.lotName}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined} />
-                  {i === 3 && allPhotos.length > 4 && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                      <span className="text-white text-sm font-semibold">+{allPhotos.length - 4} fotos</span>
-                    </div>
-                  )}
-                </button>
-              ))}
-              {heroPhotos.length < 4 && Array.from({ length: 4 - heroPhotos.length }).map((_, i) => (
-                <div key={`ph-${i}`} className="bg-white/5" />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {hasGallery && (
-          <button onClick={() => setGalleryIdx(0)}
-            className="md:hidden mt-2 text-xs font-semibold text-text/70 underline underline-offset-4">
-            Ver todas as {allPhotos.length} fotos
-          </button>
-        )}
-      </div>
-
-      {/* ── Body 2-column ── */}
-      <div className="max-w-6xl mx-auto px-4 md:px-8 pt-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-8">
-
-        {/* ── Coluna esquerda (conteúdo) ── */}
-        <div className="md:col-span-2 space-y-8">
-
-          {/* Identity */}
-          <div>
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl overflow-hidden border border-white/15 bg-white/5 shrink-0 shadow-lg">
+          {/* Nome editorial logo abaixo do cover */}
+          <div className="max-w-5xl mx-auto px-4 md:px-8 -mt-12 md:-mt-16 relative z-10">
+            <div className="flex items-end gap-4 md:gap-5">
+              <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-bg bg-white/5 shrink-0 shadow-2xl">
                 {displayLogo
                   ? <LogoImg src={displayLogo} transform={displayLogoTransform} />
-                  : <div className="w-full h-full flex items-center justify-center text-text/40 font-bold">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
+                  : <div className="w-full h-full flex items-center justify-center text-text/40 font-semibold text-2xl">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
               </div>
-              <div className="flex-1 min-w-0 pt-0.5">
-                <h1 className="text-[22px] md:text-[28px] font-semibold tracking-tight text-text leading-snug">
+              <div className="flex-1 min-w-0 pb-1 md:pb-2">
+                <h1 className="text-[26px] md:text-[34px] font-semibold tracking-tight text-text leading-tight">
                   {displayFarmName || "Fazenda"}
                 </h1>
                 {displayLocation && (
-                  <p className="text-sm text-text/55 mt-1 flex items-center gap-1.5">
-                    <MapPin size={13} /> {displayLocation}
-                    {totalArea > 0 && <span> · {totalArea.toLocaleString("pt-BR")} ha</span>}
+                  <p className="text-sm md:text-base text-text/60 mt-1 flex items-center gap-1.5">
+                    <MapPin size={14} /> {displayLocation}
                   </p>
                 )}
               </div>
             </div>
-            {displayDescription && (
-              <p className="text-[15px] text-text/75 leading-relaxed">
-                {displayDescription}
-              </p>
-            )}
           </div>
-
-          {/* Trust signals strip — Airbnb pattern: ONE primary, neutrals after */}
-          <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/25 text-accent text-xs font-semibold">
-              <ShieldCheck size={13} strokeWidth={2.25} /> EUDR conforme
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
-              <Globe size={12} /> PRODES/INPE verificado
-            </span>
-            {displayPractices.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
-                <Leaf size={12} /> {displayPractices.length} {displayPractices.length === 1 ? "prática" : "práticas"} sustentáveis
-              </span>
-            )}
-            {displayCerts.map((c, i) => (
-              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
-                <CheckCircle2 size={12} /> {c}
-              </span>
-            ))}
-          </div>
-
-          {/* Stats em linha */}
-          <div className="grid grid-cols-3 gap-3 py-5 border-y border-white/8">
-            <div>
-              <div className="text-[22px] font-semibold text-text leading-none">{displayLots.length}</div>
-              <div className="text-xs text-text/45 mt-1.5">Lote{displayLots.length !== 1 ? "s" : ""} mapeado{displayLots.length !== 1 ? "s" : ""}</div>
+        </div>
+      ) : (
+        // Modo commodity: grid 2-foto Airbnb-style atual
+        <div className="max-w-6xl mx-auto px-4 md:px-8 pt-4 md:pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-2xl overflow-hidden">
+            {/* Main cover */}
+            <div className="relative aspect-[4/3] md:aspect-[5/4] bg-white/5 group cursor-pointer"
+              onClick={() => hasGallery && setGalleryIdx(0)}>
+              {displayCover
+                ? <img src={displayCover} alt={displayFarmName} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} className="transition-transform duration-500 group-hover:scale-[1.02]" />
+                : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/15 to-bg">
+                    <span className="text-6xl font-medium text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
+                  </div>}
             </div>
-            <div>
-              <div className="text-[22px] font-semibold text-text leading-none">
-                {totalArea > 0 ? totalArea.toLocaleString("pt-BR") : "—"}
-                {totalArea > 0 && <span className="text-sm font-medium text-text/40 ml-1">ha</span>}
-              </div>
-              <div className="text-xs text-text/45 mt-1.5">Área registrada</div>
-            </div>
-            <div>
-              <div className="text-[22px] font-semibold text-accent leading-none">{displayCerts.length + 1}</div>
-              <div className="text-xs text-text/45 mt-1.5">Certificações</div>
-            </div>
-          </div>
 
-          {/* Produtos */}
-          {products.length > 0 && (
-            <div>
-              <h2 className="text-[18px] font-semibold text-text mb-3 leading-snug">O que produzem</h2>
-              <div className="flex gap-2 flex-wrap">
-                {products.map((p, i) => (
-                  <div key={i} className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-white/12 bg-white/[0.02] hover:border-white/25 transition-colors">
-                    <Sprout size={13} className="text-accent" />
-                    <span className="text-sm font-medium text-text">{p}</span>
-                  </div>
+            {/* Photo grid 2x2 (desktop only) */}
+            {hasGallery && (
+              <div className="hidden md:grid grid-cols-2 grid-rows-2 gap-2">
+                {heroPhotos.slice(0, 4).map((p, i) => (
+                  <button key={i} onClick={() => setGalleryIdx(i)}
+                    className="relative bg-white/5 overflow-hidden group">
+                    <img src={p.src} alt={p.lotName}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined} />
+                    {i === 3 && allPhotos.length > 4 && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <span className="text-white text-sm font-semibold">+{allPhotos.length - 4} fotos</span>
+                      </div>
+                    )}
+                  </button>
+                ))}
+                {heroPhotos.length < 4 && Array.from({ length: 4 - heroPhotos.length }).map((_, i) => (
+                  <div key={`ph-${i}`} className="bg-white/5" />
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Práticas */}
-          {displayPractices.length > 0 && (
-            <div>
-              <div className="flex items-baseline justify-between mb-3">
-                <h2 className="text-[18px] font-semibold text-text">Práticas declaradas</h2>
-                <span className="text-xs text-text/35 italic">Autodeclaração do produtor</span>
+          {hasGallery && (
+            <button onClick={() => setGalleryIdx(0)}
+              className="md:hidden mt-2 text-xs font-semibold text-text/70 underline underline-offset-4">
+              Ver todas as {allPhotos.length} fotos
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Body 2-column ── */}
+      <div className={`max-w-6xl mx-auto px-4 md:px-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-8 ${isProdutoMode ? "pt-10 md:pt-14" : "pt-8"}`}>
+
+        {/* ── Coluna esquerda (conteúdo) — ordem e estilo dependem do modo ── */}
+        <div className="md:col-span-2 space-y-10">
+          {(() => {
+            // ─── Blocos reutilizáveis ───
+            // Identity (logo + nome + location) — só no commodity (no produto, está no hero)
+            const identityBlock = (
+              <div key="identity">
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl overflow-hidden border border-white/15 bg-white/5 shrink-0 shadow-lg">
+                    {displayLogo
+                      ? <LogoImg src={displayLogo} transform={displayLogoTransform} />
+                      : <div className="w-full h-full flex items-center justify-center text-text/40 font-semibold">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
+                  </div>
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <h1 className="text-[22px] md:text-[28px] font-semibold tracking-tight text-text leading-snug">
+                      {displayFarmName || "Fazenda"}
+                    </h1>
+                    {displayLocation && (
+                      <p className="text-sm text-text/55 mt-1 flex items-center gap-1.5">
+                        <MapPin size={13} /> {displayLocation}
+                        {totalArea > 0 && <span> · {totalArea.toLocaleString("pt-BR")} ha</span>}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {displayDescription && (
+                  <p className="text-[15px] text-text/75 leading-relaxed">{displayDescription}</p>
+                )}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                {displayPractices.map((p) => (
-                  <div key={p.id} className="flex items-start gap-3 p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
-                    <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-                      <Leaf size={14} className="text-accent" />
+            );
+
+            // Sobre/História (descrição rica) — destaque no produto
+            const aboutBlock = displayDescription ? (
+              <section key="about">
+                <h2 className="text-[20px] md:text-[22px] font-semibold text-text mb-3 leading-snug">Sobre a fazenda</h2>
+                <p className="text-[16px] md:text-[17px] text-text/80 leading-relaxed whitespace-pre-line">
+                  {displayDescription}
+                </p>
+              </section>
+            ) : null;
+
+            // Produtos — chips simples no commodity, cards editoriais no produto
+            const productsBlock = products.length > 0 ? (
+              isProdutoMode ? (
+                <section key="products">
+                  <div className="flex items-baseline justify-between mb-4">
+                    <h2 className="text-[20px] md:text-[22px] font-semibold text-text leading-snug">Nossos produtos</h2>
+                    <span className="text-xs text-text/45">{products.length} {products.length === 1 ? "item" : "itens"}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
+                    {products.map((p, i) => (
+                      <div key={i} className="group rounded-2xl border border-white/10 bg-white/[0.02] hover:border-white/25 hover:bg-white/[0.04] transition-all overflow-hidden">
+                        <div className="aspect-[4/5] flex items-center justify-center bg-gradient-to-br from-accent/10 to-bg/40">
+                          <Sprout size={28} className="text-accent/60 group-hover:text-accent transition-colors" />
+                        </div>
+                        <div className="p-3">
+                          <p className="text-sm font-semibold text-text leading-snug">{p}</p>
+                          <p className="text-[11px] text-text/40 mt-0.5">Produzido na fazenda</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : (
+                <section key="products">
+                  <h2 className="text-[18px] font-semibold text-text mb-3 leading-snug">O que produzem</h2>
+                  <div className="flex gap-2 flex-wrap">
+                    {products.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-white/12 bg-white/[0.02] hover:border-white/25 transition-colors">
+                        <Sprout size={13} className="text-accent" />
+                        <span className="text-sm font-medium text-text">{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )
+            ) : null;
+
+            // Trust signals — chips evidentes no commodity, linha discreta no produto
+            const trustBlock = isProdutoMode ? (
+              <section key="trust" className="border-t border-white/8 pt-6">
+                <h3 className="text-xs font-semibold text-text/50 uppercase tracking-wider mb-3">Procedência verificada</h3>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                  <span className="inline-flex items-center gap-1.5 text-text/70">
+                    <ShieldCheck size={14} className="text-accent" /> EUDR conforme
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-text/70">
+                    <Globe size={14} className="text-accent" /> PRODES/INPE verificado
+                  </span>
+                  {displayCerts.map((c, i) => (
+                    <span key={i} className="inline-flex items-center gap-1.5 text-text/70">
+                      <CheckCircle2 size={14} className="text-accent" /> {c}
+                    </span>
+                  ))}
+                </div>
+              </section>
+            ) : (
+              <div key="trust" className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/25 text-accent text-xs font-semibold">
+                  <ShieldCheck size={13} strokeWidth={2.25} /> EUDR conforme
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
+                  <Globe size={12} /> PRODES/INPE verificado
+                </span>
+                {displayPractices.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
+                    <Leaf size={12} /> {displayPractices.length} {displayPractices.length === 1 ? "prática" : "práticas"} sustentáveis
+                  </span>
+                )}
+                {displayCerts.map((c, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
+                    <CheckCircle2 size={12} /> {c}
+                  </span>
+                ))}
+              </div>
+            );
+
+            // Stats — destaque no commodity, compacto inline no produto
+            const statsBlock = (
+              <div key="stats" className={isProdutoMode
+                ? "flex flex-wrap gap-x-8 gap-y-2 text-sm text-text/65"
+                : "grid grid-cols-3 gap-3 py-5 border-y border-white/8"}>
+                {isProdutoMode ? (
+                  <>
+                    <span><span className="font-semibold text-text">{displayLots.length}</span> {displayLots.length !== 1 ? "lotes" : "lote"} mapeado{displayLots.length !== 1 ? "s" : ""}</span>
+                    {totalArea > 0 && <span><span className="font-semibold text-text">{totalArea.toLocaleString("pt-BR")} ha</span> registrados</span>}
+                    <span><span className="font-semibold text-text">{displayCerts.length + 1}</span> certificaç{displayCerts.length + 1 !== 1 ? "ões" : "ão"}</span>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-[22px] font-semibold text-text leading-none">{displayLots.length}</div>
+                      <div className="text-xs text-text/45 mt-1.5">Lote{displayLots.length !== 1 ? "s" : ""} mapeado{displayLots.length !== 1 ? "s" : ""}</div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="text-sm font-semibold text-text">{p.name}</span>
-                        {p.startDate && (
-                          <span className="text-[11px] font-medium text-accent/70">
-                            desde {new Date(p.startDate).toLocaleDateString("pt-BR")}
-                          </span>
+                    <div>
+                      <div className="text-[22px] font-semibold text-text leading-none">
+                        {totalArea > 0 ? totalArea.toLocaleString("pt-BR") : "—"}
+                        {totalArea > 0 && <span className="text-sm font-medium text-text/40 ml-1">ha</span>}
+                      </div>
+                      <div className="text-xs text-text/45 mt-1.5">Área registrada</div>
+                    </div>
+                    <div>
+                      <div className="text-[22px] font-semibold text-accent leading-none">{displayCerts.length + 1}</div>
+                      <div className="text-xs text-text/45 mt-1.5">Certificações</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+
+            // Práticas
+            const praticasBlock = displayPractices.length > 0 ? (
+              <section key="praticas">
+                <div className="flex items-baseline justify-between mb-3">
+                  <h2 className={`${isProdutoMode ? "text-[20px] md:text-[22px]" : "text-[18px]"} font-semibold text-text leading-snug`}>
+                    {isProdutoMode ? "Como produzimos" : "Práticas declaradas"}
+                  </h2>
+                  <span className="text-xs text-text/35 italic">Autodeclaração do produtor</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {displayPractices.map((p) => (
+                    <div key={p.id} className="flex items-start gap-3 p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
+                      <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+                        <Leaf size={14} className="text-accent" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="text-sm font-semibold text-text">{p.name}</span>
+                          {p.startDate && (
+                            <span className="text-[11px] font-medium text-accent/70">
+                              desde {new Date(p.startDate).toLocaleDateString("pt-BR")}
+                            </span>
+                          )}
+                        </div>
+                        {p.notes && <p className="text-xs text-text/55 mt-1 italic">"{p.notes}"</p>}
+                        {p.photoUrl && <img src={p.photoUrl} alt={p.name} className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null;
+
+            // Atividade
+            const atividadeBlock = (
+              <section key="atividade">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className={`${isProdutoMode ? "text-[20px] md:text-[22px]" : "text-[18px]"} font-semibold text-text leading-snug`}>
+                    {isProdutoMode ? "Histórico do produto" : "Histórico de atividade"}
+                  </h2>
+                  {displayEvents.length > 0 && (
+                    <span className="text-xs text-accent font-semibold">{displayEvents.length} {displayEvents.length === 1 ? "evento" : "eventos"}</span>
+                  )}
+                </div>
+                {displayEvents.length === 0 ? (
+                  <div className="py-10 text-center rounded-2xl border border-white/8 bg-white/[0.02]">
+                    <Tractor size={24} className="text-text/25 mx-auto mb-2" />
+                    <p className="text-sm text-text/40">Nenhum registro ainda</p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    {displayEvents.length > 1 && <div className="absolute left-[19px] top-10 bottom-10 w-px bg-white/10" />}
+                    <div className="space-y-2.5">
+                      {displayEvents.map((e, idx) => {
+                        const cfg = eventConfig[e.type] ?? eventConfig.update;
+                        return (
+                          <motion.div
+                            key={idx}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: Math.min(idx * 0.035, 0.3) }}
+                            className="flex gap-3 items-start"
+                          >
+                            <div className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center z-10 ${cfg.color}`}>
+                              <EventIcon type={e.type} />
+                            </div>
+                            <div className="flex-1 rounded-2xl px-4 py-2.5 border border-white/8 bg-white/[0.02] hover:border-white/15 transition-colors">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-medium text-text leading-snug">{e.title}</p>
+                                <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
+                              </div>
+                              <p className="text-xs text-text/40 mt-1">{e.date}</p>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+            );
+
+            // Mapa de lotes — agrega todos os polígonos georreferenciados.
+            // Em commodity é "área registrada / verificada"; em produto é "terroir / origem".
+            // Pega geoPolygon (ApiLot, viewing other) ou mapPoints (Lot local, viewing self).
+            type AnyLot = (typeof displayLots)[number] & {
+              geoPolygon?: { lat: number; lng: number }[];
+              mapPoints?: [number, number][];
+            };
+            const lotsWithPoly: { id: string; name: string; crop: string; area?: number | string; points: [number, number][] }[] =
+              (displayLots as AnyLot[])
+                .map(l => {
+                  const polyPoints: [number, number][] = (l.geoPolygon ?? []).map(g => [g.lat, g.lng]);
+                  const localPoints: [number, number][] = (l.mapPoints ?? []) as [number, number][];
+                  const points = polyPoints.length ? polyPoints : localPoints;
+                  return points.length >= 3
+                    ? { id: String(l.id), name: l.name, crop: l.crop, area: l.area, points }
+                    : null;
+                })
+                .filter((x): x is { id: string; name: string; crop: string; area?: number | string; points: [number, number][] } => !!x);
+
+            const lotsMapBlock = lotsWithPoly.length > 0 ? (
+              <section key="lotsmap">
+                <div className="flex items-baseline justify-between mb-3">
+                  <h2 className={`${isProdutoMode ? "text-[20px] md:text-[22px]" : "text-[18px]"} font-semibold text-text leading-snug`}>
+                    {isProdutoMode ? "De onde vem o produto" : "Lotes mapeados"}
+                  </h2>
+                  <span className="text-xs text-text/35">
+                    {lotsWithPoly.length} {lotsWithPoly.length === 1 ? "lote georreferenciado" : "lotes georreferenciados"}
+                  </span>
+                </div>
+                <div className="rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02]">
+                  <LotsOverviewMap lots={lotsWithPoly} height={320} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 p-4 border-t border-white/8">
+                    {lotsWithPoly.map(l => (
+                      <div key={l.id} className="flex items-center gap-2 text-sm">
+                        <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                        <span className="font-medium text-text truncate">{l.name}</span>
+                        <span className="text-text/45 truncate">· {l.crop}</span>
+                        {l.area && Number(l.area) > 0 && (
+                          <span className="text-text/45 ml-auto whitespace-nowrap">{Number(l.area).toLocaleString("pt-BR")} ha</span>
                         )}
                       </div>
-                      {p.notes && <p className="text-xs text-text/55 mt-1 italic">"{p.notes}"</p>}
-                      {p.photoUrl && <img src={p.photoUrl} alt={p.name} className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Atividade */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[18px] font-semibold text-text">Histórico de atividade</h2>
-              {displayEvents.length > 0 && (
-                <span className="text-xs text-accent font-semibold">{displayEvents.length} {displayEvents.length === 1 ? "evento" : "eventos"}</span>
-              )}
-            </div>
-
-            {displayEvents.length === 0 ? (
-              <div className="py-10 text-center rounded-2xl border border-white/8 bg-white/[0.02]">
-                <Tractor size={24} className="text-text/25 mx-auto mb-2" />
-                <p className="text-sm text-text/40">Nenhum registro ainda</p>
-              </div>
-            ) : (
-              <div className="relative">
-                {displayEvents.length > 1 && <div className="absolute left-[19px] top-10 bottom-10 w-px bg-white/10" />}
-                <div className="space-y-2.5">
-                  {displayEvents.map((e, idx) => {
-                    const cfg = eventConfig[e.type] ?? eventConfig.update;
-                    return (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: Math.min(idx * 0.035, 0.3) }}
-                        className="flex gap-3 items-start"
-                      >
-                        <div className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center z-10 ${cfg.color}`}>
-                          <EventIcon type={e.type} />
-                        </div>
-                        <div className="flex-1 rounded-2xl px-4 py-2.5 border border-white/8 bg-white/[0.02] hover:border-white/15 transition-colors">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-medium text-text leading-snug">{e.title}</p>
-                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
-                          </div>
-                          <p className="text-xs text-text/40 mt-1">{e.date}</p>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
                 </div>
-              </div>
-            )}
-          </div>
+                <p className="text-[11px] text-text/35 mt-2 italic">
+                  Polígonos declarados pelo produtor. Cobertura PRODES/INPE para verificação satelital.
+                </p>
+              </section>
+            ) : null;
+
+            // ─── Ordem por modo ───
+            // Commodity: prova primeiro (identity → trust → stats → mapa → produtos → práticas → atividade)
+            // Produto:   narrativa primeiro (sobre → produtos → mapa terroir → práticas → atividade → stats → trust)
+            return isProdutoMode
+              ? [aboutBlock, productsBlock, lotsMapBlock, praticasBlock, atividadeBlock, statsBlock, trustBlock].filter(Boolean)
+              : [identityBlock, trustBlock, statsBlock, lotsMapBlock, productsBlock, praticasBlock, atividadeBlock].filter(Boolean);
+          })()}
         </div>
 
         {/* ── Coluna direita (sidebar conversão) ── */}
@@ -4664,21 +5018,29 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           <div className="sticky top-20 space-y-4">
             {canSendProposal ? (
               <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
-                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">Faça uma proposta direta</h3>
+                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">
+                  {isProdutoMode ? "Comprar deste produtor" : "Faça uma proposta direta"}
+                </h3>
                 <p className="text-sm text-text/55 leading-relaxed mb-4">
-                  Sem intermediários — conexão direta com {displayFarmName || "o produtor"} para volume, prazo e logística.
+                  {isProdutoMode
+                    ? `Fale direto com ${displayFarmName || "o produtor"} sobre disponibilidade, lotes e distribuição.`
+                    : `Sem intermediários — conexão direta com ${displayFarmName || "o produtor"} para volume, prazo e logística.`}
                 </p>
                 <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
                   className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
-                  <Send size={14} /> Enviar proposta
+                  <Send size={14} /> {isProdutoMode ? "Quero comprar" : "Enviar proposta"}
                 </button>
                 <p className="text-[12px] text-text/40 text-center mt-3">Resposta em até 48h</p>
               </div>
             ) : isViewingOther ? (
               <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
-                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">Quer fazer negócio?</h3>
+                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">
+                  {isProdutoMode ? "Interessado nestes produtos?" : "Quer fazer negócio?"}
+                </h3>
                 <p className="text-sm text-text/55 mb-4 leading-relaxed">
-                  Compradores cadastrados enviam propostas diretas a esta e outras fazendas.
+                  {isProdutoMode
+                    ? "Cadastre-se para falar direto com a fazenda e descobrir onde comprar."
+                    : "Compradores cadastrados enviam propostas diretas a esta e outras fazendas."}
                 </p>
                 <button onClick={() => go(1)}
                   className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors">

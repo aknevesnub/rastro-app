@@ -23,6 +23,7 @@ model User {
   logoTransform   Json?          @map("logo_transform")
   coverTransform  Json?          @map("cover_transform")
   plan            String         @default("free")
+  profileMode     String         @default("commodity") @map("profile_mode") // "commodity" | "produto"
   isPublic        Boolean        @default(true) @map("is_public")
   trialEndsAt     DateTime?      @map("trial_ends_at") @db.Timestamptz(6)
   emailVerified   Boolean        @default(false) @map("email_verified")
