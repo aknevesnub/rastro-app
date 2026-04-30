@@ -2642,13 +2642,12 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
         </button>
 
         <div className="flex items-end justify-between gap-4 mb-1">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-text leading-tight">
-            Fazendas brasileiras<br className="hidden md:block" />
-            <span className="text-text/50"> com rastreabilidade</span>
+          <h1 className="text-[22px] md:text-[28px] font-semibold tracking-tight text-text leading-snug">
+            Fazendas com rastreabilidade
           </h1>
         </div>
-        <p className="text-sm text-text/50 mt-2">
-          {filtered.length} {filtered.length === 1 ? "fazenda" : "fazendas"} · todas com EUDR e registro digital verificado
+        <p className="text-sm text-text/55 mt-1.5">
+          {filtered.length} {filtered.length === 1 ? "fazenda" : "fazendas"} · EUDR e registro digital verificado
         </p>
       </div>
 
@@ -2745,7 +2744,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                       if (activeEntry.id) navigate(`/fazenda/${encodeURIComponent(activeEntry.id)}`);
                       else go(5);
                     }}
-                      className="w-full py-2.5 bg-accent text-bg text-xs font-bold hover:bg-accent/90 transition-colors">
+                      className="w-full py-2.5 bg-accent text-bg text-xs font-semibold hover:bg-accent/90 transition-colors">
                       Ver perfil completo →
                     </button>
                   )}
@@ -2766,7 +2765,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
             <p className="text-base font-semibold text-text/70 mb-2">Nenhuma fazenda encontrada</p>
             <p className="text-sm text-text/40 mb-5">Tente ajustar os filtros ou buscar por outra região.</p>
             <button onClick={() => { setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
-              className="px-5 py-2.5 rounded-full bg-accent text-bg text-xs font-bold hover:bg-accent/90 transition-colors">
+              className="px-5 py-2.5 rounded-full bg-accent text-bg text-xs font-semibold hover:bg-accent/90 transition-colors">
               Limpar filtros
             </button>
           </div>
@@ -2776,10 +2775,11 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
               const cfg = BIOME_CONFIG[f.biome] || BIOME_CONFIG["cerrado"];
               const cover = f.cover || f.logo;
               const isActive = activeEntry?.farmName === f.farmName;
+              const hasEUDR = f.certs.some(c => c.toLowerCase().includes("eudr"));
               return (
                 <motion.div
                   key={f.id ?? `${f.farmName}-${i}`}
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
                   onClick={() => {
@@ -2793,80 +2793,57 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                   }}
                   className="group cursor-pointer"
                 >
-                  {/* Cover image 16:9 */}
-                  <div className={`relative w-full aspect-[5/4] rounded-2xl overflow-hidden bg-white/5 border ${isActive ? "border-accent/50" : "border-white/8"} transition-all group-hover:border-white/20`}>
+                  {/* Photo plate — 1:1, single floating badge, no border */}
+                  <div className={`relative w-full aspect-square rounded-[14px] overflow-hidden bg-white/[0.04] ${isActive ? "ring-2 ring-accent/40" : ""}`}>
                     {cover ? (
                       <img
                         src={cover}
                         alt={f.farmName}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${cfg.color}22, ${cfg.color}08)` }}>
-                        <span className="text-4xl font-black text-text/20 uppercase tracking-tight">{f.farmName.slice(0, 2)}</span>
+                        <span className="text-4xl font-medium text-text/25">{f.farmName.slice(0, 2).toUpperCase()}</span>
                       </div>
                     )}
 
-                    {/* Top-left: bioma badge */}
-                    <div className="absolute top-3 left-3">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/10">
-                        <span style={{ background: cfg.color }} className="w-1.5 h-1.5 rounded-full" />
-                        <span className="text-[10px] font-semibold text-white">{cfg.label}</span>
-                      </div>
-                    </div>
-
-                    {/* Top-right: EUDR badge */}
-                    {f.certs.some(c => c.toLowerCase().includes("eudr")) && (
-                      <div className="absolute top-3 right-3">
-                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent/95 text-bg">
-                          <ShieldCheck size={10} strokeWidth={2.5} />
-                          <span className="text-[10px] font-bold">EUDR</span>
+                    {/* Single guest-favorite-equivalent badge: EUDR */}
+                    {hasEUDR && (
+                      <div className="absolute top-3 left-3">
+                        <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-bg/95 backdrop-blur-sm">
+                          <ShieldCheck size={11} strokeWidth={2.5} className="text-accent" />
+                          <span className="text-[11px] font-semibold text-text">EUDR</span>
                         </div>
-                      </div>
-                    )}
-
-                    {/* Bottom: produto chips */}
-                    {f.products.length > 0 && (
-                      <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
-                        {f.products.slice(0, 3).map((p, j) => (
-                          <span key={j} className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md border border-white/12 text-[10px] font-medium text-white">
-                            {p}
-                          </span>
-                        ))}
-                        {f.products.length > 3 && (
-                          <span className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-md border border-white/12 text-[10px] font-medium text-white/70">
-                            +{f.products.length - 3}
-                          </span>
-                        )}
                       </div>
                     )}
                   </div>
 
-                  {/* Content below image */}
-                  <div className="pt-3 px-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-[15px] font-semibold text-text leading-snug line-clamp-1">
+                  {/* Meta below photo — Airbnb-style: title row + sub-line + sub-line */}
+                  <div className="pt-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h3 className="text-[15px] font-medium text-text leading-snug truncate">
                         {f.farmName}
                       </h3>
-                      {f.isReal && (
-                        <span className="shrink-0 mt-0.5 text-[10px] font-bold text-accent">●</span>
-                      )}
+                      <span className="shrink-0 text-[13px] text-text/45">{cfg.label}</span>
                     </div>
-                    <p className="text-sm text-text/55 mt-0.5 truncate">
+                    <p className="text-sm text-text/50 mt-0.5 truncate">
                       {f.location}
-                      {f.area > 0 && <span> · {f.area.toLocaleString("pt-BR")} ha</span>}
                     </p>
-                    {f.description && (
-                      <p className="text-xs text-text/40 mt-1.5 line-clamp-2 leading-relaxed">
-                        {f.description}
+                    <p className="text-sm text-text/50 truncate">
+                      {f.products.slice(0, 2).join(" · ")}
+                      {f.products.length > 2 && <span> · +{f.products.length - 2}</span>}
+                    </p>
+                    {f.area > 0 && (
+                      <p className="text-sm mt-1">
+                        <span className="font-medium text-text">{f.area.toLocaleString("pt-BR")} ha</span>
+                        <span className="text-text/45"> registrados</span>
                       </p>
                     )}
 
-                    {/* Action: enviar proposta para compradores */}
                     {isComprador && (
                       <button
                         onClick={e => { e.stopPropagation(); setPropForm({ message: "", volume: "", products: [] }); setProposalTarget(f); }}
-                        className="mt-3 w-full py-2 rounded-full border border-white/15 text-xs font-semibold text-text/80 hover:border-accent/50 hover:text-accent transition-colors"
+                        className="mt-3 text-sm font-medium text-text/80 underline underline-offset-4 hover:text-accent transition-colors"
                       >
                         Enviar proposta
                       </button>
@@ -4465,7 +4442,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             </button>
             {canSendProposal && (
               <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
-                className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent text-bg text-xs font-bold hover:bg-accent/90 transition-colors">
+                className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent text-bg text-xs font-semibold hover:bg-accent/90 transition-colors">
                 <Send size={13} /> Enviar proposta
               </button>
             )}
@@ -4497,7 +4474,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                     style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined} />
                   {i === 3 && allPhotos.length > 4 && (
                     <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                      <span className="text-white text-sm font-bold">+{allPhotos.length - 4} fotos</span>
+                      <span className="text-white text-sm font-semibold">+{allPhotos.length - 4} fotos</span>
                     </div>
                   )}
                 </button>
@@ -4532,7 +4509,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                   : <div className="w-full h-full flex items-center justify-center text-text/40 font-bold">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
               </div>
               <div className="flex-1 min-w-0 pt-0.5">
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-text leading-tight">
+                <h1 className="text-[22px] md:text-[28px] font-semibold tracking-tight text-text leading-snug">
                   {displayFarmName || "Fazenda"}
                 </h1>
                 {displayLocation && (
@@ -4550,21 +4527,21 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             )}
           </div>
 
-          {/* Trust signals strip */}
+          {/* Trust signals strip — Airbnb pattern: ONE primary, neutrals after */}
           <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent text-bg text-xs font-bold">
-              <ShieldCheck size={13} strokeWidth={2.5} /> EUDR conforme
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/25 text-accent text-xs font-semibold">
+              <ShieldCheck size={13} strokeWidth={2.25} /> EUDR conforme
             </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/15 text-text/80 text-xs font-medium">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
               <Globe size={12} /> PRODES/INPE verificado
             </span>
             {displayPractices.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/15 text-text/80 text-xs font-medium">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
                 <Leaf size={12} /> {displayPractices.length} {displayPractices.length === 1 ? "prática" : "práticas"} sustentáveis
               </span>
             )}
             {displayCerts.map((c, i) => (
-              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/15 text-text/80 text-xs font-medium">
+              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
                 <CheckCircle2 size={12} /> {c}
               </span>
             ))}
@@ -4573,18 +4550,18 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           {/* Stats em linha */}
           <div className="grid grid-cols-3 gap-3 py-5 border-y border-white/8">
             <div>
-              <div className="text-2xl font-bold text-text leading-none">{displayLots.length}</div>
+              <div className="text-[22px] font-semibold text-text leading-none">{displayLots.length}</div>
               <div className="text-xs text-text/45 mt-1.5">Lote{displayLots.length !== 1 ? "s" : ""} mapeado{displayLots.length !== 1 ? "s" : ""}</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-text leading-none">
+              <div className="text-[22px] font-semibold text-text leading-none">
                 {totalArea > 0 ? totalArea.toLocaleString("pt-BR") : "—"}
                 {totalArea > 0 && <span className="text-sm font-medium text-text/40 ml-1">ha</span>}
               </div>
               <div className="text-xs text-text/45 mt-1.5">Área registrada</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-accent leading-none">{displayCerts.length + 1}</div>
+              <div className="text-[22px] font-semibold text-accent leading-none">{displayCerts.length + 1}</div>
               <div className="text-xs text-text/45 mt-1.5">Certificações</div>
             </div>
           </div>
@@ -4592,7 +4569,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           {/* Produtos */}
           {products.length > 0 && (
             <div>
-              <h2 className="text-base font-bold text-text mb-3">O que produzem</h2>
+              <h2 className="text-[18px] font-semibold text-text mb-3 leading-snug">O que produzem</h2>
               <div className="flex gap-2 flex-wrap">
                 {products.map((p, i) => (
                   <div key={i} className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-white/12 bg-white/[0.02] hover:border-white/25 transition-colors">
@@ -4608,7 +4585,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           {displayPractices.length > 0 && (
             <div>
               <div className="flex items-baseline justify-between mb-3">
-                <h2 className="text-base font-bold text-text">Práticas declaradas</h2>
+                <h2 className="text-[18px] font-semibold text-text">Práticas declaradas</h2>
                 <span className="text-xs text-text/35 italic">Autodeclaração do produtor</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -4638,7 +4615,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           {/* Atividade */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-text">Histórico de atividade</h2>
+              <h2 className="text-[18px] font-semibold text-text">Histórico de atividade</h2>
               {displayEvents.length > 0 && (
                 <span className="text-xs text-accent font-semibold">{displayEvents.length} {displayEvents.length === 1 ? "evento" : "eventos"}</span>
               )}
@@ -4686,27 +4663,25 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         <aside className="hidden md:block">
           <div className="sticky top-20 space-y-4">
             {canSendProposal ? (
-              <div className="rounded-2xl border border-accent/30 bg-accent/5 p-5">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-accent mb-2">Interessado nessa fazenda?</p>
-                <h3 className="text-lg font-bold text-text leading-tight mb-3">Faça uma proposta direta ao produtor</h3>
-                <p className="text-sm text-text/60 leading-relaxed mb-4">
-                  Sem intermediários. Conexão direta com {displayFarmName || "o produtor"} para discutir volume, prazo e logística.
+              <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
+                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">Faça uma proposta direta</h3>
+                <p className="text-sm text-text/55 leading-relaxed mb-4">
+                  Sem intermediários — conexão direta com {displayFarmName || "o produtor"} para volume, prazo e logística.
                 </p>
                 <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
-                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
                   <Send size={14} /> Enviar proposta
                 </button>
-                <p className="text-[11px] text-text/40 text-center mt-3">Resposta em até 48h</p>
+                <p className="text-[12px] text-text/40 text-center mt-3">Resposta em até 48h</p>
               </div>
             ) : isViewingOther ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-accent mb-2">Quer fazer negócio?</p>
-                <h3 className="text-lg font-bold text-text leading-tight mb-3">Cadastre-se como comprador</h3>
-                <p className="text-sm text-text/60 mb-4 leading-relaxed">
-                  Compradores cadastrados podem enviar propostas diretas a esta e outras fazendas.
+              <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
+                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">Quer fazer negócio?</h3>
+                <p className="text-sm text-text/55 mb-4 leading-relaxed">
+                  Compradores cadastrados enviam propostas diretas a esta e outras fazendas.
                 </p>
                 <button onClick={() => go(1)}
-                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors">
+                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors">
                   Criar conta
                 </button>
               </div>
@@ -4715,20 +4690,20 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             {/* QR Code CTA — apenas dono */}
             {!isViewingOther && user && (
               <button onClick={() => go(10)}
-                className="w-full rounded-2xl border border-accent/30 bg-accent/5 hover:bg-accent/10 transition-colors p-4 flex items-center gap-3 text-left">
-                <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center text-accent shrink-0">
+                className="w-full rounded-[14px] border border-white/12 bg-white/[0.02] hover:bg-white/[0.04] transition-colors p-4 flex items-center gap-3 text-left">
+                <div className="w-10 h-10 rounded-xl bg-accent/12 flex items-center justify-center text-accent shrink-0">
                   <QrCode size={18} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-text">QR Code de rastreio</div>
+                  <div className="text-sm font-semibold text-text">QR Code de rastreio</div>
                   <div className="text-xs text-text/45 mt-0.5">Compartilhe sua origem</div>
                 </div>
-                <ChevronRight size={16} className="text-accent shrink-0" />
+                <ChevronRight size={16} className="text-text/40 shrink-0" />
               </button>
             )}
 
             {/* Trust mini-list */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-4">
               <p className="text-xs font-semibold text-text/50 mb-3">Por que confiar?</p>
               <ul className="space-y-2.5 text-sm text-text/75">
                 <li className="flex items-start gap-2"><ShieldCheck size={14} className="text-accent mt-0.5 shrink-0" /> EUDR — Regulamento UE 2023/1115</li>
@@ -4744,15 +4719,15 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
       {!isViewingOther && user && (
         <div className="md:hidden max-w-6xl mx-auto px-4 mt-8">
           <button onClick={() => go(10)}
-            className="w-full rounded-2xl border border-accent/30 bg-accent/5 p-4 flex items-center gap-3 text-left">
-            <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center text-accent shrink-0">
+            className="w-full rounded-[14px] border border-white/12 bg-white/[0.02] p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-xl bg-accent/12 flex items-center justify-center text-accent shrink-0">
               <QrCode size={18} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-text">QR Code de rastreio</div>
+              <div className="text-sm font-semibold text-text">QR Code de rastreio</div>
               <div className="text-xs text-text/45 mt-0.5">Compartilhe sua origem</div>
             </div>
-            <ChevronRight size={16} className="text-accent shrink-0" />
+            <ChevronRight size={16} className="text-text/40 shrink-0" />
           </button>
         </div>
       )}
@@ -4761,7 +4736,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
       {canSendProposal && (
         <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-bg/95 backdrop-blur-xl border-t border-white/10 px-4 py-3">
           <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
-            className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+            className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
             <Send size={15} /> Enviar proposta para {displayFarmName?.split(" ")[0] || "produtor"}
           </button>
         </div>
@@ -4778,8 +4753,8 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
               className="bg-bg border border-white/15 w-full max-w-md rounded-3xl p-6">
               <div className="flex items-start justify-between mb-5">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Nova proposta</p>
-                  <h3 className="text-lg font-bold text-text leading-tight">{displayFarmName}</h3>
+                  <p className="text-[12px] text-text/55 mb-1">Nova proposta</p>
+                  <h3 className="text-[20px] font-semibold text-text leading-snug">{displayFarmName}</h3>
                   {displayLocation && <p className="text-xs text-text/45 mt-0.5 flex items-center gap-1"><MapPin size={11} />{displayLocation}</p>}
                 </div>
                 <button onClick={() => setShowProposal(false)} className="text-text/40 hover:text-text mt-1"><X size={18} /></button>
@@ -4829,7 +4804,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                 addToast(`Proposta enviada para ${displayFarmName}!`);
                 setShowProposal(false);
               }}
-                className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-bold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+                className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
                 <Send size={14} /> Enviar proposta
               </button>
             </motion.div>
