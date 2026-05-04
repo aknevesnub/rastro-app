@@ -616,6 +616,9 @@ interface AppCtx {
   addPhotoToLot: (lotId: string, photo: string) => void;
   deleteAccount: () => void;
   logout: () => void;
+  // Limpa lotes/eventos/propostas em memória + localStorage (sem mexer em token/user)
+  // Usado por login e register pra evitar herdar dados da sessão anterior.
+  clearLocalSession: () => void;
   setCurrentLotId: (id: string | null) => void;
   setViewingFarmId: (id: string | null) => void;
   addToast: (msg: string, type?: Toast["type"]) => void;
@@ -891,12 +894,23 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
     setProposals(updated); store("rastro_proposals", updated);
   };
 
+  // Reseta dados por-sessão (lotes, eventos, propostas) sem afetar token/user.
+  // Útil em login/register para evitar que dados de uma sessão anterior contaminem
+  // a nova fazenda (ex: backfill de lotes locais sem apiId em conta nova).
+  const clearLocalSession = () => {
+    setLots([]);
+    setEvents([]);
+    setProposals([]);
+    ["rastro_lots", "rastro_events", "rastro_proposals", "rastro_lgpd"].forEach(k => localStorage.removeItem(k));
+  };
+
   const logout = () => {
     // Best-effort: invalida sessão no servidor antes de limpar local
     if (API_ENABLED && api.token.get()) {
       api.auth.logout().catch(() => { /* falha silenciosa: prossegue logout local */ });
     }
     setUser(null);
+    clearLocalSession();
     localStorage.removeItem("rastro_user");
     if (API_ENABLED) api.token.clear();
   };
@@ -920,7 +934,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const removeToast = (id: string) => setToasts(p => p.filter(t => t.id !== id));
 
   return (
-    <AppContext.Provider value={{ user, saveUser, lots, addLot, updateLot, deleteLot, addPhotoToLot, deleteAccount, events, proposals, logout, currentLotId, setCurrentLotId, viewingFarmId, setViewingFarmId, toasts, addToast, removeToast, sendProposal, updateProposalStatus }}>
+    <AppContext.Provider value={{ user, saveUser, lots, addLot, updateLot, deleteLot, addPhotoToLot, deleteAccount, events, proposals, logout, clearLocalSession, currentLotId, setCurrentLotId, viewingFarmId, setViewingFarmId, toasts, addToast, removeToast, sendProposal, updateProposalStatus }}>
       {children}
     </AppContext.Provider>
   );
@@ -3490,7 +3504,7 @@ const ROLE_PRODUCTS_LABEL: Record<UserRole, string> = {
 };
 
 const SCadastro = ({ go }: { go: (s: number) => void }) => {
-  const { saveUser, addToast } = useContext(AppContext);
+  const { saveUser, addToast, clearLocalSession } = useContext(AppContext);
   useSEO({
     title: "Criar conta — Cadastro grátis",
     description: "Cadastre sua fazenda na Quem Produz em 5 minutos. Vitrine pública, QR de rastreabilidade por lote e conformidade EUDR. Grátis.",
@@ -3526,6 +3540,10 @@ const SCadastro = ({ go }: { go: (s: number) => void }) => {
           phone: form.phone || undefined,
         });
         api.token.set(jwt);
+        // Limpa qualquer dado de sessão anterior — evita backfill cruzado:
+        // lotes locais sem apiId seriam re-criados no banco da nova fazenda
+        // pelo useEffect inicial e o mapa puxaria polígonos de outra propriedade.
+        clearLocalSession();
         // Salva localmente o user mapeado (com extras locais como role/cnpj/products)
         saveUser({
           ...form,
@@ -3673,7 +3691,7 @@ const SCadastro = ({ go }: { go: (s: number) => void }) => {
 };
 
 const SLogin = ({ go }: { go: (s: number) => void }) => {
-  const { user, addToast, saveUser } = useContext(AppContext);
+  const { user, addToast, saveUser, clearLocalSession } = useContext(AppContext);
   useSEO({
     title: "Entrar — Acesse sua vitrine",
     description: "Acesse sua conta Quem Produz para gerenciar lotes, perfil público e documentos da fazenda.",
@@ -3718,6 +3736,11 @@ const SLogin = ({ go }: { go: (s: number) => void }) => {
         const { token: jwt, user: apiUser } = await api.auth.login(email, password);
         api.token.set(jwt);
         resetRateLimit();
+        // Limpa cache da sessão anterior (lotes/eventos/propostas) antes de
+        // hidratar dados do user que está logando — evita backfill cruzado.
+        // O merge só preserva campos do user (logo/cnpj/products) que NÃO viajam
+        // pelo banco hoje; lotes vêm sempre do servidor.
+        clearLocalSession();
         // Funde dados do servidor com o que estiver localmente (governança/EUDR)
         saveUser(mergeApiUserIntoLocal(apiUser, user));
         addToast("Bem-vindo de volta!");
