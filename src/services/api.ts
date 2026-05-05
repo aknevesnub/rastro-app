@@ -260,8 +260,10 @@ export const photos = {
       throw new Error("Tipo de imagem não permitido (JPEG, PNG ou WebP)");
     }
 
+    const { resizeImage } = await import("./image");
+    const optimized = await resizeImage(file);
     const fd = new FormData();
-    fd.append("photo", file);
+    fd.append("photo", optimized);
     const tk = token.get();
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 60_000);

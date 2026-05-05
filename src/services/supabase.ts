@@ -9,6 +9,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { resizeImage } from "./image";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -34,11 +35,12 @@ export const uploadPhoto = async (file: File, userId: string): Promise<string | 
   const sb = supabase();
   if (!sb) return null;
 
-  const ext = file.name.split(".").pop() || "jpg";
+  const optimized = await resizeImage(file);
+  const ext = optimized.name.split(".").pop() || "jpg";
   const filename = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
-  const { error } = await sb.storage.from(PHOTOS_BUCKET).upload(filename, file, {
-    contentType: file.type,
+  const { error } = await sb.storage.from(PHOTOS_BUCKET).upload(filename, optimized, {
+    contentType: optimized.type,
     cacheControl: "31536000",
     upsert: false,
   });

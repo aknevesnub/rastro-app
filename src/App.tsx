@@ -2310,7 +2310,7 @@ const FarmsMapSection = ({ go, sectionRef }: { go: (s: number) => void; sectionR
       zoomControl: true,
       attributionControl: false,
       scrollWheelZoom: false,
-    }).setView([-14, -52], 4);
+    }).setView([-14, -52], 5);
 
     L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -2612,7 +2612,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   // Init map only when showMap=true (lazy)
   useEffect(() => {
     if (!showMap || !mapRef.current || leafletRef.current) return;
-    const map = L.map(mapRef.current, { zoomControl: true, attributionControl: false, scrollWheelZoom: true }).setView([-14, -52], 4);
+    const map = L.map(mapRef.current, { zoomControl: true, attributionControl: false, scrollWheelZoom: true }).setView([-14, -52], 5);
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }).addTo(map);
     // Labels overlay
     const labels = L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, opacity: 0.9 });
@@ -2829,7 +2829,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                   <div className="flex items-stretch gap-3 p-3">
                     <div className="w-16 h-16 rounded-xl overflow-hidden bg-white/5 border border-white/10 shrink-0">
                       {activeEntry.cover || activeEntry.logo
-                        ? <img src={activeEntry.cover || activeEntry.logo} className="w-full h-full object-cover" alt="" />
+                        ? <img src={activeEntry.cover || activeEntry.logo} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" />
                         : <div className="w-full h-full flex items-center justify-center text-text/40 font-bold">{activeEntry.farmName.slice(0, 2).toUpperCase()}</div>}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -3153,13 +3153,13 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
 
   // ── Featured producers carousel (luxury hero rotation) ─────────────────────
   const heroFeatured = [
-    { photo: "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=2400&q=88&auto=format&fit=crop",
+    { photo: "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=1600&q=80&auto=format&fit=crop",
       name: "José Mendes",         crop: "soja",  ha: "4.200", lots: 12, location: "Sorriso, MT",     state: "Mato Grosso", main: "Soja",  heritage: "3 gerações" },
-    { photo: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=2400&q=88&auto=format&fit=crop",
+    { photo: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1600&q=80&auto=format&fit=crop",
       name: "Maria Helena Costa",  crop: "café",  ha: "180",   lots: 8,  location: "Patrocínio, MG",  state: "Minas Gerais", main: "Café",  heritage: "Família tradicional" },
-    { photo: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=2400&q=88&auto=format&fit=crop",
+    { photo: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=1600&q=80&auto=format&fit=crop",
       name: "Pedro Cunha",         crop: "cacau", ha: "320",   lots: 6,  location: "Ilhéus, BA",      state: "Bahia",        main: "Cacau", heritage: "4 gerações" },
-    { photo: "https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=2400&q=88&auto=format&fit=crop",
+    { photo: "https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=1600&q=80&auto=format&fit=crop",
       name: "Ana Beatriz Silva",   crop: "milho", ha: "2.100", lots: 15, location: "Rio Verde, GO",   state: "Goiás",        main: "Milho", heritage: "2 gerações" },
   ];
   const [heroIdx, setHeroIdx] = useState(0);
@@ -3220,6 +3220,8 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
               src={f.photo}
               alt=""
               aria-hidden="true"
+              decoding="async"
+              fetchPriority={heroIdx === 0 ? "high" : "low"}
               initial={{ opacity: 0, scale: 1.06 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.02 }}
@@ -3537,7 +3539,7 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
                 <motion.div key={i} initial={{ y: 20, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
                   className="border border-white/10 hover:border-accent/60 transition-all duration-300 group cursor-pointer rounded-2xl overflow-hidden" onClick={() => go(5)}>
                   <div className="h-36 bg-gradient-to-br from-accent/5 to-white/2 border-b border-white/10 relative overflow-hidden">
-                    {f.cover ? <img src={f.cover} className="w-full h-full object-cover opacity-60" alt="cover" /> : <div className="w-full h-full flex items-center justify-center"><Sprout size={40} className="text-accent/20" /></div>}
+                    {f.cover ? <img src={f.cover} className="w-full h-full object-cover opacity-60" alt="cover" loading="lazy" decoding="async" /> : <div className="w-full h-full flex items-center justify-center"><Sprout size={40} className="text-accent/20" /></div>}
                     <div className="absolute inset-0 bg-gradient-to-t from-bg/80 to-transparent" />
                     <div className="absolute top-3 right-3"><span className="text-[8px] font-bold uppercase tracking-widest text-accent border border-accent/40 px-2 py-0.5 bg-bg/70">{t.farms_eudr} ✓</span></div>
                     {f.logo && <div className="absolute bottom-3 left-3 w-10 h-10 border border-white/20 bg-bg overflow-hidden"><LogoImg src={f.logo} transform={f.logoTransform} /></div>}
@@ -4820,6 +4822,24 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const heroPhotos = allPhotos.slice(0, 5);
   const hasGallery = heroPhotos.length > 0;
 
+  // ── Completeness (IKEA effect + Zeigarnik) — só pro dono ─────────────────
+  // 8 dimensões. Cada uma vira um "investimento" que aumenta endowment.
+  const completionItems = !isViewingOther ? [
+    { key: "logo",    done: !!displayLogo,                                     label: "Logo da fazenda",    cta: "Adicionar logo",        step: 4 },
+    { key: "cover",   done: !!displayCover,                                    label: "Foto de capa",        cta: "Adicionar capa",        step: 4 },
+    { key: "about",   done: !!displayDescription && displayDescription.length > 80, label: "Sobre a fazenda",     cta: "Contar a história",     step: 4 },
+    { key: "loc",     done: !!displayLocation,                                 label: "Localização",         cta: "Definir localização",   step: 4 },
+    { key: "produtos",done: products.length > 0,                               label: "Produtos",            cta: "Listar produtos",       step: 4 },
+    { key: "lotes",   done: displayLots.length > 0,                            label: "Lotes mapeados",      cta: "Cadastrar 1º lote",     step: 6 },
+    { key: "fotos",   done: allPhotos.length >= 3,                             label: "Galeria (3+ fotos)",  cta: "Subir fotos",           step: 9 },
+    { key: "selos",   done: displayCerts.length > 0 || displayPractices.length > 0, label: "Selos ou práticas",   cta: "Declarar prática/selo", step: 14 },
+  ] : [];
+  const completionDone = completionItems.filter(i => i.done).length;
+  const completionTotal = completionItems.length;
+  const completionPct = completionTotal ? Math.round((completionDone / completionTotal) * 100) : 0;
+  const nextItem = completionItems.find(i => !i.done);
+  const showCompleteness = !isViewingOther && completionPct < 100;
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-32 md:pb-12">
 
@@ -4849,6 +4869,72 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         </div>
       </div>
 
+      {/* ── Completeness banner (só dono · IKEA effect + Zeigarnik) ── */}
+      {showCompleteness && (
+        <div className="border-b border-white/8" style={{ background: "linear-gradient(to right, rgba(31, 58, 46, 0.18), rgba(15, 13, 10, 0.4))" }}>
+          <div className="max-w-6xl mx-auto px-4 md:px-8 py-4 md:py-5">
+            <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+              {/* Score + progress */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-3 mb-2">
+                  <span className="text-[10px] font-bold uppercase text-text/55" style={{ letterSpacing: "0.22em" }}>
+                    Sua vitrine
+                  </span>
+                  <span className="text-[10px] font-bold uppercase" style={{ letterSpacing: "0.22em", color: "#E0BC8A" }}>
+                    {completionDone}/{completionTotal} prontos
+                  </span>
+                </div>
+                {/* Progress rule */}
+                <div className="relative h-[3px] bg-white/8 rounded-full overflow-hidden mb-2">
+                  <div
+                    className="absolute inset-y-0 left-0 transition-all duration-700"
+                    style={{
+                      width: `${completionPct}%`,
+                      background: "linear-gradient(to right, #C8A878, #E0BC8A)",
+                      boxShadow: "0 0 12px rgba(224, 188, 138, 0.55)",
+                    }}
+                  />
+                </div>
+                <p className="text-[13px] text-text/70 leading-snug">
+                  {completionPct < 50 && nextItem && (
+                    <>Mostre tudo que sua fazenda tem. <span className="text-text/90 font-medium">Próximo passo: {nextItem.label.toLowerCase()}.</span></>
+                  )}
+                  {completionPct >= 50 && completionPct < 85 && nextItem && (
+                    <>Você está em boa forma. Falta {nextItem.label.toLowerCase()} para impressionar comprador europeu.</>
+                  )}
+                  {completionPct >= 85 && nextItem && (
+                    <span style={{ color: "#E8C795", fontWeight: 500 }}>
+                      Quase lá. Só {completionTotal - completionDone} {completionTotal - completionDone === 1 ? "item" : "itens"} para sua vitrine ficar completa.
+                    </span>
+                  )}
+                </p>
+              </div>
+              {/* Next CTA */}
+              {nextItem && (
+                <button
+                  onClick={() => go(nextItem.step)}
+                  className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 transition-all"
+                  style={{
+                    background: "#E0BC8A",
+                    color: "#1A1814",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.18em",
+                    borderRadius: "2px",
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#E8C795"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#E0BC8A"; }}
+                >
+                  {nextItem.cta}
+                  <ChevronRight size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Hero ── */}
       {isProdutoMode ? (
         // Modo produto: cover editorial fullbleed com nome em destaque sobreposto
@@ -4858,7 +4944,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             onClick={() => hasGallery && setGalleryIdx(0)}
           >
             {displayCover
-              ? <img src={displayCover} alt={displayFarmName} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} />
+              ? <img src={displayCover} alt={displayFarmName} decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} />
               : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/15 to-bg">
                   <span className="text-7xl font-medium text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
                 </div>}
@@ -4935,7 +5021,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             <div className="relative aspect-[4/3] md:aspect-[5/4] bg-white/5 group cursor-pointer"
               onClick={() => hasGallery && setGalleryIdx(0)}>
               {displayCover
-                ? <img src={displayCover} alt={displayFarmName} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} className="transition-transform duration-500 group-hover:scale-[1.02]" />
+                ? <img src={displayCover} alt={displayFarmName} decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} className="transition-transform duration-500 group-hover:scale-[1.02]" />
                 : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/15 to-bg">
                     <span className="text-6xl font-medium text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
                   </div>}
@@ -4947,7 +5033,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                 {heroPhotos.slice(0, 4).map((p, i) => (
                   <button key={i} onClick={() => setGalleryIdx(i)}
                     className="relative bg-white/5 overflow-hidden group">
-                    <img src={p.src} alt={p.lotName}
+                    <img src={p.src} alt={p.lotName} loading="lazy" decoding="async"
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined} />
                     {i === 3 && allPhotos.length > 4 && (
@@ -5332,7 +5418,7 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                           )}
                         </div>
                         {p.notes && <p className="text-xs text-text/55 mt-1 italic">"{p.notes}"</p>}
-                        {p.photoUrl && <img src={p.photoUrl} alt={p.name} className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
+                        {p.photoUrl && <img src={p.photoUrl} alt={p.name} loading="lazy" decoding="async" className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
                       </div>
                     </div>
                   ))}
@@ -5949,7 +6035,7 @@ const SProducao = ({ go }: { go: (s: number) => void }) => {
                   </div>
                   {l.photos?.length > 0 && (
                     <div className="flex gap-1.5 mb-3">
-                      {l.photos.slice(0, 3).map((p, j) => <img key={j} src={p} className="w-10 h-10 object-cover border border-white/10" alt="" />)}
+                      {l.photos.slice(0, 3).map((p, j) => <img key={j} src={p} className="w-10 h-10 object-cover border border-white/10" alt="" loading="lazy" decoding="async" />)}
                       {l.photos.length > 3 && <div className="w-10 h-10 bg-white/5 flex items-center justify-center text-[9px] font-bold text-white/40">+{l.photos.length - 3}</div>}
                     </div>
                   )}
@@ -6220,7 +6306,7 @@ const SGaleria = ({ go }: { go: (s: number) => void }) => {
             {shown.map((item, i) => (
               <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
                 className="aspect-square relative cursor-pointer group overflow-hidden" onClick={() => setLightbox(item.photo)}>
-                <img src={item.photo} alt={item.lotName} style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${item.transform.x}px, ${item.transform.y}px) scale(${item.transform.scale})`, transformOrigin: "center" }} />
+                <img src={item.photo} alt={item.lotName} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${item.transform.x}px, ${item.transform.y}px) scale(${item.transform.scale})`, transformOrigin: "center" }} />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-end p-1">
                   <span className="text-[8px] font-bold uppercase tracking-widest text-white opacity-0 group-hover:opacity-100 transition-opacity truncate">{item.lotName}</span>
                 </div>
@@ -7579,8 +7665,9 @@ const AppContent = () => {
   }, [theme]);
 
   useEffect(() => {
-    // Se logou estando em landing/cadastro/login, vai pro dashboard
-    if (user && (s === 0 || s === 1 || s === 2)) {
+    // Se logou estando em cadastro/login, vai pro dashboard.
+    // Landing (s===0) fica acessível mesmo logado — user pode voltar pra home.
+    if (user && (s === 1 || s === 2)) {
       navigate("/app", { replace: true });
     }
     // Auth guard: rotas /app/* exigem usuário logado — redireciona pra login
