@@ -4908,7 +4908,19 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                 {displayLocation && (
                   <p className="text-sm md:text-[15px] text-text/60 mt-2 flex items-center gap-1.5" style={{ fontFamily: "'Inter', sans-serif" }}>
                     <MapPin size={14} /> {displayLocation}
-                    {totalArea > 0 && <span className="text-text/40"> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{totalArea.toLocaleString("pt-BR")}</span> ha</span>}
+                    {totalArea > 0 && <span className="text-text/40"> · ~<span style={{ fontVariantNumeric: "tabular-nums" }}>{totalArea.toLocaleString("pt-BR")}</span> ha</span>}
+                  </p>
+                )}
+                {displayDescription && (
+                  <p className="hidden md:block mt-3 italic text-text/55" style={{
+                    fontFamily: "'Fraunces', 'Times New Roman', serif",
+                    fontWeight: 300,
+                    fontSize: "clamp(15px, 1.4vw, 18px)",
+                    lineHeight: 1.45,
+                    maxWidth: "44rem",
+                  }}>
+                    {(displayDescription.split(/[.!?]/)[0] || "").trim()}
+                    {displayDescription.split(/[.!?]/)[0] && "."}
                   </p>
                 )}
               </div>
@@ -5019,6 +5031,189 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                 <p className="text-[16px] md:text-[17px] text-text/80 leading-relaxed whitespace-pre-line" style={{ fontFamily: "'Inter', sans-serif" }}>
                   {displayDescription}
                 </p>
+              </section>
+            ) : null;
+
+            // Pull quote editorial — primeira frase rica em Fraunces grande (produto only)
+            const pullQuoteSentences = displayDescription
+              ? displayDescription.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 30)
+              : [];
+            const pullQuote = pullQuoteSentences.length > 1 ? pullQuoteSentences[1] : null;
+            const pullQuoteBlock = (isProdutoMode && pullQuote) ? (
+              <section key="pullquote" className="py-2">
+                <div className="flex items-start gap-5 md:gap-7">
+                  <span className="block shrink-0 mt-3" style={{ width: "2px", height: "auto", alignSelf: "stretch", background: "linear-gradient(to bottom, #E0BC8A, transparent)" }} />
+                  <blockquote style={{
+                    fontFamily: "'Fraunces', 'Times New Roman', serif",
+                    fontSize: "clamp(1.35rem, 2.6vw, 1.85rem)",
+                    fontWeight: 300,
+                    fontStyle: "italic",
+                    lineHeight: 1.35,
+                    letterSpacing: "-0.012em",
+                    color: "rgba(250, 247, 240, 0.92)",
+                    maxWidth: "44rem",
+                  }}>
+                    {pullQuote.replace(/\.$/, "")}.
+                  </blockquote>
+                </div>
+              </section>
+            ) : null;
+
+            // Hero stats — banner editorial com 4 KPIs grandes (produto only)
+            const heroStatsBlock = isProdutoMode ? (
+              <section key="herostats" className="py-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 md:gap-x-8" style={{
+                  borderTop: "1px solid rgba(224, 188, 138, 0.25)",
+                  borderBottom: "1px solid rgba(224, 188, 138, 0.25)",
+                  paddingTop: "clamp(1.25rem, 2vw, 1.75rem)",
+                  paddingBottom: "clamp(1.25rem, 2vw, 1.75rem)",
+                }}>
+                  {[
+                    { v: totalArea > 0 ? `~${totalArea.toLocaleString("pt-BR")}` : "—", l: "hectares", suffix: totalArea > 0 ? "estimados" : null },
+                    { v: String(displayLots.length || 0), l: displayLots.length === 1 ? "lote mapeado" : "lotes mapeados", suffix: null },
+                    { v: String(products.length || 0), l: products.length === 1 ? "produto" : "produtos", suffix: null },
+                    { v: String((displayCerts.length || 0) + 1), l: displayCerts.length === 0 ? "selo" : "selos", suffix: null },
+                  ].map((s, i) => (
+                    <div key={i} className="flex flex-col">
+                      <div style={{
+                        fontFamily: "'Fraunces', 'Times New Roman', serif",
+                        fontSize: "clamp(2rem, 4.5vw, 3rem)",
+                        fontWeight: 500,
+                        letterSpacing: "-0.02em",
+                        lineHeight: 1,
+                        color: "var(--text)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}>{s.v}</div>
+                      <div className="mt-2 flex items-baseline gap-1.5" style={{
+                        fontFamily: "'Inter', sans-serif",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.18em",
+                        color: "rgba(250, 247, 240, 0.55)",
+                      }}>
+                        {s.l}
+                        {s.suffix && <span className="italic font-normal normal-case tracking-normal text-text/35" style={{ fontFamily: "'Fraunces', serif", fontSize: "12px" }}>· {s.suffix}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null;
+
+            // Galeria editorial — todas as fotos da fazenda (produto only)
+            const galleryBlock = (isProdutoMode && allPhotos.length > 0) ? (
+              <section key="gallery">
+                <div className="flex items-end justify-between mb-4 gap-3">
+                  {editorialH2("A fazenda em fotos")}
+                  <span className="text-xs text-text/35 pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>{allPhotos.length} {allPhotos.length === 1 ? "imagem" : "imagens"}</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
+                  {allPhotos.slice(0, 9).map((p, i) => {
+                    // Layout editorial: primeira foto ocupa 2x2 no desktop
+                    const isFeature = i === 0;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setGalleryIdx(i)}
+                        className={`group relative overflow-hidden bg-white/5 ${isFeature ? "col-span-2 row-span-2 aspect-square md:aspect-auto" : "aspect-square"}`}
+                        style={{ borderRadius: "2px" }}
+                      >
+                        <img
+                          src={p.src}
+                          alt={p.lotName}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                          style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined}
+                        />
+                        {/* Crop label — bottom left, editorial */}
+                        <div className="absolute bottom-0 left-0 right-0 p-2.5 md:p-3 bg-gradient-to-t from-[rgba(15,13,10,0.88)] via-[rgba(15,13,10,0.4)] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                          <div className="flex items-center gap-2">
+                            <span className="block" style={{ width: "12px", height: "1.5px", background: "#E0BC8A" }} />
+                            <span className="text-[10px] font-semibold text-white/95 uppercase tracking-widest" style={{ fontFamily: "'Inter', sans-serif" }}>{p.crop || p.lotName}</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {allPhotos.length > 9 && (
+                  <button
+                    onClick={() => setGalleryIdx(9)}
+                    className="mt-4 inline-flex items-center gap-2 transition-colors"
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.2em",
+                      color: "#E8C795",
+                      borderBottom: "1.5px solid #E0BC8A",
+                      paddingBottom: "4px",
+                    }}
+                  >
+                    Ver todas as {allPhotos.length} fotos <ChevronRight size={13} />
+                  </button>
+                )}
+              </section>
+            ) : null;
+
+            // Reconhecimentos — cards editoriais para certificações (produto only)
+            const recognitionBlock = (isProdutoMode && (displayCerts.length > 0 || displayPractices.length > 0)) ? (
+              <section key="recognition">
+                {editorialH2("Selos & reconhecimentos")}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* EUDR sempre presente */}
+                  <div className="p-5 flex items-start gap-4" style={{
+                    background: "rgba(31, 58, 46, 0.15)",
+                    border: "1px solid rgba(224, 188, 138, 0.2)",
+                    borderRadius: "2px",
+                  }}>
+                    <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{
+                      background: "rgba(224, 188, 138, 0.12)",
+                      border: "1px solid rgba(224, 188, 138, 0.3)",
+                    }}>
+                      <ShieldCheck size={18} style={{ color: "#E0BC8A" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <div style={{
+                        fontFamily: "'Fraunces', serif",
+                        fontSize: "16px",
+                        fontWeight: 500,
+                        color: "var(--text)",
+                        letterSpacing: "-0.01em",
+                      }}>EUDR — Regulamento UE 2023/1115</div>
+                      <p className="mt-1.5 text-[13px] text-text/55 leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
+                        Origem rastreável para o mercado europeu. Documentação organizada na plataforma.
+                      </p>
+                    </div>
+                  </div>
+                  {displayCerts.map((c, i) => (
+                    <div key={i} className="p-5 flex items-start gap-4" style={{
+                      background: "rgba(255, 255, 255, 0.025)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "2px",
+                    }}>
+                      <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{
+                        background: "rgba(224, 188, 138, 0.08)",
+                        border: "1px solid rgba(224, 188, 138, 0.2)",
+                      }}>
+                        <CheckCircle2 size={18} style={{ color: "#E0BC8A" }} />
+                      </div>
+                      <div className="min-w-0">
+                        <div style={{
+                          fontFamily: "'Fraunces', serif",
+                          fontSize: "16px",
+                          fontWeight: 500,
+                          color: "var(--text)",
+                          letterSpacing: "-0.01em",
+                        }}>{c}</div>
+                        <p className="mt-1.5 text-[13px] text-text/45 leading-relaxed italic" style={{ fontFamily: "'Fraunces', serif" }}>
+                          Autodeclarado pelo produtor
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </section>
             ) : null;
 
@@ -5271,7 +5466,8 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             // Commodity: prova primeiro (identity → trust → stats → mapa → produtos → práticas → atividade)
             // Produto:   narrativa primeiro (sobre → produtos → mapa terroir → práticas → atividade → stats → trust)
             return isProdutoMode
-              ? [aboutBlock, productsBlock, lotsMapBlock, praticasBlock, atividadeBlock, statsBlock, trustBlock].filter(Boolean)
+              // Showcase narrative: stats heroicos → sobre → quote editorial → galeria → produtos → mapa terroir → práticas → reconhecimentos → atividade → trust
+              ? [heroStatsBlock, aboutBlock, pullQuoteBlock, galleryBlock, productsBlock, lotsMapBlock, praticasBlock, recognitionBlock, atividadeBlock, trustBlock].filter(Boolean)
               : [identityBlock, trustBlock, statsBlock, lotsMapBlock, productsBlock, praticasBlock, atividadeBlock].filter(Boolean);
           })()}
         </div>
