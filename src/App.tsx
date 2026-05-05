@@ -4,7 +4,7 @@ import { paymentService } from "./services/payment";
 import type { PlanTier } from "./services/payment";
 import * as api from "./services/api";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import QRCode from "qrcode";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -3051,6 +3051,40 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   );
 };
 
+// Counter animado que dispara quando entra no viewport (count-up com ease-out cubic).
+// Respeita prefers-reduced-motion (snap direto para o valor final).
+function CountUp({
+  to, suffix = "", prefix = "", duration = 1200, delay = 0, format = false,
+}: { to: number; suffix?: string; prefix?: string; duration?: number; delay?: number; format?: boolean }) {
+  const [n, setN] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    if (reduced) { setN(to); return; }
+    const el = ref.current;
+    if (!el) return;
+    let started = false;
+    let raf = 0;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || started) return;
+      started = true;
+      const t0 = performance.now() + delay;
+      const tick = (now: number) => {
+        if (now < t0) { raf = requestAnimationFrame(tick); return; }
+        const p = Math.min(1, (now - t0) / duration);
+        const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
+        setN(Math.round(to * eased));
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, { threshold: 0.35 });
+    obs.observe(el);
+    return () => { obs.disconnect(); cancelAnimationFrame(raf); };
+  }, [to, duration, delay, reduced]);
+  const display = format ? n.toLocaleString("pt-BR") : String(n);
+  return <span ref={ref}>{prefix}{display}{suffix}</span>;
+}
+
 const SLanding = ({ go }: { go: (s: number) => void }) => {
   const t = useLang();
   const { lots: realLots } = useContext(AppContext);
@@ -3117,6 +3151,30 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
 
   const benefitIcons = [ShieldCheck, TrendingUp, Globe, QrCode, MapPin, Users];
 
+  // ── Featured producers carousel (luxury hero rotation) ─────────────────────
+  const heroFeatured = [
+    { photo: "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=2400&q=88&auto=format&fit=crop",
+      name: "José Mendes",         crop: "soja",  ha: "4.200", lots: 12, location: "Sorriso, MT",     state: "Mato Grosso", main: "Soja",  heritage: "3 gerações" },
+    { photo: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=2400&q=88&auto=format&fit=crop",
+      name: "Maria Helena Costa",  crop: "café",  ha: "180",   lots: 8,  location: "Patrocínio, MG",  state: "Minas Gerais", main: "Café",  heritage: "Família tradicional" },
+    { photo: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=2400&q=88&auto=format&fit=crop",
+      name: "Pedro Cunha",         crop: "cacau", ha: "320",   lots: 6,  location: "Ilhéus, BA",      state: "Bahia",        main: "Cacau", heritage: "4 gerações" },
+    { photo: "https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=2400&q=88&auto=format&fit=crop",
+      name: "Ana Beatriz Silva",   crop: "milho", ha: "2.100", lots: 15, location: "Rio Verde, GO",   state: "Goiás",        main: "Milho", heritage: "2 gerações" },
+  ];
+  const [heroIdx, setHeroIdx] = useState(0);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
+    const id = window.setInterval(() => {
+      setHeroIdx((i) => (i + 1) % heroFeatured.length);
+    }, 7000);
+    return () => window.clearInterval(id);
+  }, [heroFeatured.length]);
+  const f = heroFeatured[heroIdx];
+  const fFirst = f.name.split(" ")[0];
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg">
 
@@ -3152,138 +3210,276 @@ const SLanding = ({ go }: { go: (s: number) => void }) => {
         </div>
       </header>
 
-      {/* ── Hero ── */}
-      <section ref={heroRef} id="hero" className="min-h-[88vh] flex flex-col justify-center px-5 md:px-12 lg:px-20 py-16 border-b border-white/10 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.032]" style={{ backgroundImage: "linear-gradient(#E0FF22 1px,transparent 1px),linear-gradient(90deg,#E0FF22 1px,transparent 1px)", backgroundSize: "56px 56px" }} />
-        <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-bg to-transparent pointer-events-none" />
-        {/* Large decorative number */}
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 text-[20vw] font-black text-white/[0.018] leading-none select-none pointer-events-none tracking-tighter uppercase pr-8 hidden lg:block"
-          style={{ fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>500+</div>
+      {/* ── Hero (Luxury Producer · Airbnb-style · Featured rotation) ── */}
+      <section ref={heroRef} id="hero" className="relative min-h-[92vh] flex flex-col justify-end overflow-hidden border-b border-white/10">
+        {/* Rotating photo carousel — Ken Burns + crossfade */}
+        <div className="absolute inset-0">
+          <AnimatePresence>
+            <motion.img
+              key={f.photo}
+              src={f.photo}
+              alt=""
+              aria-hidden="true"
+              initial={{ opacity: 0, scale: 1.06 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+              transition={{ opacity: { duration: 1.4, ease: [0.22, 1, 0.36, 1] }, scale: { duration: 8, ease: "linear" } }}
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{ filter: "saturate(0.94) contrast(1.04) brightness(0.96)" }}
+            />
+          </AnimatePresence>
+          {/* Cinematic tonal overlay */}
+          <div className="absolute inset-0 pointer-events-none" style={{
+            background: "linear-gradient(to top, rgba(15,13,10,0.95) 0%, rgba(15,13,10,0.82) 22%, rgba(15,13,10,0.55) 45%, rgba(15,13,10,0.30) 68%, rgba(15,13,10,0.15) 88%, rgba(15,13,10,0.05) 100%)"
+          }} />
+          {/* Side fade for card legibility */}
+          <div className="absolute inset-y-0 right-0 w-1/2 hidden lg:block pointer-events-none" style={{
+            background: "linear-gradient(to left, rgba(15,13,10,0.4) 0%, transparent 70%)"
+          }} />
+          {/* Film grain */}
+          <div className="absolute inset-0 opacity-[0.07] mix-blend-overlay pointer-events-none"
+            style={{ backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")" }} />
+        </div>
 
-        <div className="max-w-6xl mx-auto w-full relative z-10">
-          {/* Social proof badge */}
-          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="mb-8">
-            <span className="inline-flex items-center gap-2 py-1 px-3 border border-white/20 bg-white/5 text-[9px] font-bold tracking-widest uppercase text-white/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              {t.hero_tag}
-            </span>
-          </motion.div>
-
-          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-20 lg:items-center">
-            {/* Left: Copy */}
-            <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>
-              <h1 className="font-extrabold uppercase tracking-tight leading-[0.82] mb-7"
-                style={{ fontSize: "clamp(2rem,7vw,5.25rem)", fontFamily: "'Syne', 'Helvetica Neue', sans-serif" }}>
-                <span className="block">{t.hero_line1}</span>
-                <span className="block text-stroke">{t.hero_line2}</span>
-                <span className="block text-accent">{t.hero_line3}</span>
-              </h1>
-              <p className="text-sm md:text-[0.9375rem] text-white/60 mb-5 leading-relaxed max-w-[22rem]">{t.hero_sub}</p>
-
-              <div className="flex items-center gap-1.5 mb-9">
-                <ShieldCheck size={11} className="text-accent/70" />
-                <span className="text-[9.5px] font-bold text-white/35 uppercase tracking-widest">Autodeclaração digital · Sem burocracia · 100% grátis</span>
-              </div>
-
-              {/* Dual CTA */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button onClick={() => go(1)}
-                  className="group inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-accent text-bg text-[11px] font-black uppercase tracking-widest hover:bg-accent/90 transition-all">
-                  <Sprout size={14} />
-                  {t.hero_cta_producer}
-                  <ChevronRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
-                </button>
-                <button onClick={() => go(1)}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 border border-white/18 text-white/70 text-[10px] font-bold uppercase tracking-widest hover:border-accent/50 hover:text-accent transition-all">
-                  <TrendingUp size={12} />
-                  {t.hero_cta_buyer}
-                </button>
-              </div>
-
-              {/* Trust strip */}
-              <div className="mt-8 pt-6 border-t border-white/8 flex flex-wrap gap-x-5 gap-y-1.5">
-                {[
-                  { icon: Sprout,     label: "500+ fazendas" },
-                  { icon: Globe,      label: "40+ países"    },
-                  { icon: ShieldCheck,label: "100% grátis"   },
-                ].map((s, i) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <s.icon size={10} className="text-accent/60" />
-                    <span className="text-[8.5px] font-bold uppercase tracking-widest text-white/35">{s.label}</span>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-
-            {/* Right: Live farm profile preview */}
-            <motion.div initial={{ y: 28, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="hidden lg:block">
-              <div className="border border-white/10 overflow-hidden bg-white/[0.015]">
-                {/* Farm header */}
-                <div className="h-[88px] bg-gradient-to-br from-accent/8 via-white/[0.015] to-transparent border-b border-white/10 relative flex items-end px-4 py-3">
-                  <div className="absolute top-3 right-3 flex gap-1.5">
-                    <span className="text-[7px] font-black uppercase tracking-widest text-accent border border-accent/50 px-1.5 py-0.5 bg-bg/70">Docs ✓</span>
-                    <span className="text-[7px] font-black uppercase tracking-widest text-white/40 border border-white/12 px-1.5 py-0.5 bg-bg/70">Público</span>
-                  </div>
-                  <div className="flex items-end gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-accent/12 border border-accent/25 flex items-center justify-center shrink-0">
-                      {showcaseFarms?.[0]?.logo
-                        ? <LogoImg src={showcaseFarms[0].logo!} transform={showcaseFarms[0].logoTransform} />
-                        : <Sprout size={18} className="text-accent" />}
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-black uppercase tracking-tight text-text">{showcaseFarms?.[0]?.farmName || "Fazenda Boa Esperança"}</div>
-                      <div className="text-[8px] text-white/40 font-medium flex items-center gap-1 mt-0.5"><MapPin size={7} />{showcaseFarms?.[0]?.location || "Mato Grosso, BR"}</div>
-                    </div>
-                  </div>
+        <div className="relative z-10 max-w-7xl mx-auto w-full px-5 md:px-12 lg:px-20 pt-32 md:pt-40 pb-14 md:pb-20">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={heroIdx}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-16 lg:items-end"
+            >
+              {/* ── Editorial copy ── */}
+              <div>
+                {/* Eyebrow — brighter gold, thicker rule, subtle shadow for legibility on photo */}
+                <div className="flex items-center gap-3 mb-8">
+                  <span className="block w-12" style={{ height: "2px", background: "#E0BC8A", boxShadow: "0 0 12px rgba(224, 188, 138, 0.45)" }} />
+                  <span style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.24em",
+                    color: "#E8C795",
+                    textShadow: "0 1px 8px rgba(15, 13, 10, 0.65), 0 0 1px rgba(15, 13, 10, 0.85)",
+                  }}>
+                    Quem produz aqui · {f.state} · 2026
+                  </span>
                 </div>
-                {/* Score bar */}
-                <div className="px-4 py-2.5 border-b border-white/8">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[7.5px] font-bold uppercase tracking-widest text-white/35">Perfil Quem Produz</span>
-                    <span className="text-[10px] font-black text-accent">82 pts</span>
-                  </div>
-                  <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
-                    <motion.div className="h-full bg-accent rounded-full" initial={{ width: 0 }} animate={{ width: "82%" }} transition={{ delay: 0.55, duration: 0.9, ease: "easeOut" }} />
-                  </div>
+
+                {/* Headline — Fraunces 500 unified, single emphasis on the number */}
+                <h1 className="mb-8" style={{
+                  fontFamily: "'Fraunces', 'Times New Roman', serif",
+                  fontSize: "clamp(2.4rem, 6.4vw, 5rem)",
+                  lineHeight: "1.0",
+                  letterSpacing: "-0.022em",
+                  color: "#FAF7F0",
+                  fontWeight: 500,
+                }}>
+                  <span className="block">Conheça {fFirst}.</span>
+                  <span className="block">Cultiva {f.crop} em</span>
+                  <span className="block">
+                    <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{f.ha}</span> hectares.
+                  </span>
+                </h1>
+
+                {/* Sub */}
+                <p className="mb-10 max-w-md" style={{
+                  fontFamily: "'Inter', sans-serif",
+                  fontSize: "15px",
+                  lineHeight: "1.65",
+                  color: "rgba(250, 247, 240, 0.72)",
+                  fontWeight: 400,
+                }}>
+                  Origem registrada. Documentação em ordem.<br />
+                  Pronto para exportar.
+                </p>
+
+                {/* CTAs */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-9">
+                  <button
+                    onClick={() => go(16)}
+                    className="group inline-flex items-center gap-3 pb-1.5 transition-colors"
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "13.5px",
+                      fontWeight: 500,
+                      letterSpacing: "0.01em",
+                      color: "#FAF7F0",
+                      borderBottom: "2px solid #E0BC8A",
+                      textShadow: "0 1px 6px rgba(15, 13, 10, 0.5)",
+                    }}
+                  >
+                    Ver fazenda completa
+                    <ChevronRight size={14} style={{ color: "#E8C795", filter: "drop-shadow(0 1px 4px rgba(15,13,10,0.6))" }} className="group-hover:translate-x-1 transition-transform" />
+                  </button>
+                  <button
+                    onClick={() => go(1)}
+                    className="inline-flex items-center gap-2 px-5 py-3 transition-all"
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "10.5px",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.2em",
+                      color: "rgba(250, 247, 240, 0.9)",
+                      border: "1px solid rgba(250, 247, 240, 0.28)",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#E0BC8A"; (e.currentTarget as HTMLButtonElement).style.color = "#E8C795"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(250, 247, 240, 0.28)"; (e.currentTarget as HTMLButtonElement).style.color = "rgba(250, 247, 240, 0.9)"; }}
+                  >
+                    Sou produtor · cadastrar
+                  </button>
                 </div>
-                {/* Products */}
-                <div className="px-4 py-2.5 border-b border-white/8">
-                  <div className="text-[7px] font-bold uppercase tracking-widest text-white/28 mb-2">Produtos</div>
-                  <div className="flex flex-wrap gap-1">
-                    {(showcaseFarms?.[0]?.products || ["Soja", "Milho", "Sorgo", "Algodão"]).slice(0, 4).map((p, i) => (
-                      <span key={i} className="text-[7.5px] font-bold uppercase tracking-widest text-white/45 border border-white/12 px-1.5 py-0.5">{p}</span>
+              </div>
+
+              {/* ── Floating listing card (rotates with featured) ── */}
+              <div className="hidden lg:block">
+                <div className="p-6 backdrop-blur-md" style={{
+                  background: "rgba(250, 247, 240, 0.96)",
+                  boxShadow: "0 30px 80px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(26,24,20,0.04)",
+                  borderRadius: "2px",
+                }}>
+                  {/* Avatar + name */}
+                  <div className="flex items-center gap-4 mb-5">
+                    <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center shrink-0" style={{
+                      background: "rgba(31, 58, 46, 0.08)",
+                      boxShadow: "inset 0 0 0 1px rgba(26,24,20,0.08)",
+                    }}>
+                      <Sprout size={22} style={{ color: "#1F3A2E" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate" style={{
+                        fontFamily: "'Fraunces', serif",
+                        fontSize: "16px",
+                        fontWeight: 500,
+                        color: "#1A1814",
+                        letterSpacing: "-0.01em",
+                      }}>
+                        {f.name}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5" style={{
+                        fontFamily: "'Inter', sans-serif",
+                        fontSize: "11px",
+                        fontWeight: 400,
+                        color: "rgba(26, 24, 20, 0.55)",
+                      }}>
+                        <MapPin size={10} /> {f.location}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recognized row (substitui "Verificado") */}
+                  <div className="flex items-center gap-2 mb-5 pb-5" style={{
+                    borderBottom: "1px solid rgba(26, 24, 20, 0.08)",
+                  }}>
+                    <Sprout size={13} style={{ color: "#1F3A2E" }} />
+                    <span style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "10.5px",
+                      fontWeight: 600,
+                      letterSpacing: "0.04em",
+                      color: "#1F3A2E",
+                    }}>Reconhecido · 2026</span>
+                    <span className="ml-auto" style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "10px",
+                      fontWeight: 400,
+                      color: "rgba(26, 24, 20, 0.45)",
+                    }}>{f.heritage}</span>
+                  </div>
+
+                  {/* Stats grid */}
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    {[
+                      { v: f.ha, l: "hectares" },
+                      { v: f.main, l: "principal" },
+                      { v: String(f.lots), l: "lotes" },
+                    ].map((s, i) => (
+                      <div key={i}>
+                        <div style={{
+                          fontFamily: "'Fraunces', serif",
+                          fontSize: "16px",
+                          fontWeight: 500,
+                          color: "#1A1814",
+                          fontVariantNumeric: "tabular-nums",
+                          lineHeight: 1.1,
+                        }}>{s.v}</div>
+                        <div className="mt-1.5" style={{
+                          fontFamily: "'Inter', sans-serif",
+                          fontSize: "9px",
+                          fontWeight: 500,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.16em",
+                          color: "rgba(26, 24, 20, 0.5)",
+                        }}>{s.l}</div>
+                      </div>
                     ))}
                   </div>
-                </div>
-                {/* Stats row */}
-                <div className="grid grid-cols-3 divide-x divide-white/8 text-center">
-                  {[
-                    { n: showcaseFarms ? realLots.length.toString() : "8",  l: "Lotes"     },
-                    { n: showcaseFarms ? realLots.reduce((a, l) => a + (Number(l.area) || 0), 0).toString() : "2.400", l: "ha ~" },
-                    { n: "3", l: "Propostas" },
-                  ].map((s, i) => (
-                    <div key={i} className="py-3">
-                      <div className="text-base font-black text-text leading-none">{s.n}</div>
-                      <div className="text-[7px] font-bold uppercase tracking-widest text-white/28 mt-0.5">{s.l}</div>
-                    </div>
-                  ))}
-                </div>
-                {/* Bottom CTA */}
-                <div className="px-4 py-3 border-t border-white/8">
-                  <button onClick={() => go(1)} className="w-full py-2 text-[8.5px] font-black uppercase tracking-widest text-bg bg-accent hover:bg-accent/90 transition-colors">
-                    Criar minha vitrine igual a esta →
+
+                  {/* Inline CTA */}
+                  <button
+                    onClick={() => go(16)}
+                    className="w-full text-left flex items-center justify-between transition-colors group"
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      letterSpacing: "0.02em",
+                      color: "#1A1814",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#1F3A2E"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#1A1814"; }}
+                  >
+                    <span>Ver vitrine pública</span>
+                    <ChevronRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
                   </button>
                 </div>
               </div>
             </motion.div>
-          </div>
+          </AnimatePresence>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.65 }}
-            className="mt-12 flex items-center gap-3 text-white/28 cursor-pointer hover:text-accent transition-colors w-fit"
-            onClick={() => scrollTo(farmsRef, "farms")}>
-            <ArrowDown size={14} className="animate-bounce" />
-            <span className="text-[8px] font-bold uppercase tracking-widest">{t.hero_cta_farms}</span>
-          </motion.div>
+          {/* Bottom rail: scroll hint + slide indicators (clickable) */}
+          <div className="mt-14 md:mt-20 flex items-center justify-between gap-6 pt-6"
+            style={{ borderTop: "1px solid rgba(250, 247, 240, 0.12)" }}
+          >
+            <button
+              onClick={() => scrollTo(farmsRef, "farms")}
+              className="flex items-center gap-3 transition-colors"
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                fontSize: "10px",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.22em",
+                color: "rgba(250, 247, 240, 0.5)",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#E8C795"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(250, 247, 240, 0.5)"; }}
+            >
+              <ArrowDown size={13} className="animate-bounce" />
+              Explorar 500+ fazendas
+            </button>
+
+            <div className="flex items-center gap-2">
+              {heroFeatured.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setHeroIdx(i)}
+                  aria-label={`Mostrar produtor ${i + 1}`}
+                  className="transition-all duration-500"
+                  style={{
+                    height: "2px",
+                    width: i === heroIdx ? "36px" : "16px",
+                    background: i === heroIdx ? "#E0BC8A" : "rgba(250, 247, 240, 0.22)",
+                    boxShadow: i === heroIdx ? "0 0 10px rgba(224, 188, 138, 0.5)" : "none",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -4676,7 +4872,22 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             )}
           </div>
           {/* Nome editorial logo abaixo do cover */}
-          <div className="max-w-5xl mx-auto px-4 md:px-8 -mt-12 md:-mt-16 relative z-10">
+          <div className="max-w-5xl mx-auto px-4 md:px-8 -mt-14 md:-mt-20 relative z-10">
+            {/* Eyebrow gold — escape "verificado" */}
+            <div className="flex items-center gap-3 mb-4 md:mb-5 pl-[88px] md:pl-[112px]">
+              <span className="block w-10" style={{ height: "2px", background: "#E0BC8A", boxShadow: "0 0 10px rgba(224, 188, 138, 0.4)" }} />
+              <span style={{
+                fontFamily: "'Inter', sans-serif",
+                fontSize: "10px",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.24em",
+                color: "#E8C795",
+                textShadow: "0 1px 8px rgba(15, 13, 10, 0.65)",
+              }}>
+                Origem reconhecida · 2026
+              </span>
+            </div>
             <div className="flex items-end gap-4 md:gap-5">
               <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-bg bg-white/5 shrink-0 shadow-2xl">
                 {displayLogo
@@ -4684,12 +4895,20 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                   : <div className="w-full h-full flex items-center justify-center text-text/40 font-semibold text-2xl">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
               </div>
               <div className="flex-1 min-w-0 pb-1 md:pb-2">
-                <h1 className="text-[26px] md:text-[34px] font-semibold tracking-tight text-text leading-tight">
+                <h1 style={{
+                  fontFamily: "'Fraunces', 'Times New Roman', serif",
+                  fontSize: "clamp(1.75rem, 4.5vw, 2.5rem)",
+                  fontWeight: 500,
+                  letterSpacing: "-0.018em",
+                  lineHeight: 1.05,
+                  color: "var(--text, #FAF7F0)",
+                }}>
                   {displayFarmName || "Fazenda"}
                 </h1>
                 {displayLocation && (
-                  <p className="text-sm md:text-base text-text/60 mt-1 flex items-center gap-1.5">
+                  <p className="text-sm md:text-[15px] text-text/60 mt-2 flex items-center gap-1.5" style={{ fontFamily: "'Inter', sans-serif" }}>
                     <MapPin size={14} /> {displayLocation}
+                    {totalArea > 0 && <span className="text-text/40"> · <span style={{ fontVariantNumeric: "tabular-nums" }}>{totalArea.toLocaleString("pt-BR")}</span> ha</span>}
                   </p>
                 )}
               </div>
@@ -4776,11 +4995,28 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
               </div>
             );
 
+            // Editorial section heading helper (luxury direction — produto mode)
+            const editorialH2 = (text: string) => isProdutoMode ? (
+              <div className="mb-4">
+                <span className="block mb-2.5" style={{ width: "32px", height: "2px", background: "#E0BC8A" }} />
+                <h2 style={{
+                  fontFamily: "'Fraunces', 'Times New Roman', serif",
+                  fontSize: "clamp(1.4rem, 2.6vw, 1.75rem)",
+                  fontWeight: 500,
+                  letterSpacing: "-0.012em",
+                  lineHeight: 1.1,
+                  color: "var(--text)",
+                }}>{text}</h2>
+              </div>
+            ) : (
+              <h2 className="text-[18px] font-semibold text-text leading-snug mb-3">{text}</h2>
+            );
+
             // Sobre/História (descrição rica) — destaque no produto
             const aboutBlock = displayDescription ? (
               <section key="about">
-                <h2 className="text-[20px] md:text-[22px] font-semibold text-text mb-3 leading-snug">Sobre a fazenda</h2>
-                <p className="text-[16px] md:text-[17px] text-text/80 leading-relaxed whitespace-pre-line">
+                {editorialH2("Sobre a fazenda")}
+                <p className="text-[16px] md:text-[17px] text-text/80 leading-relaxed whitespace-pre-line" style={{ fontFamily: "'Inter', sans-serif" }}>
                   {displayDescription}
                 </p>
               </section>
@@ -4790,9 +5026,9 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             const productsBlock = products.length > 0 ? (
               isProdutoMode ? (
                 <section key="products">
-                  <div className="flex items-baseline justify-between mb-4">
-                    <h2 className="text-[20px] md:text-[22px] font-semibold text-text leading-snug">Nossos produtos</h2>
-                    <span className="text-xs text-text/45">{products.length} {products.length === 1 ? "item" : "itens"}</span>
+                  <div className="flex items-end justify-between mb-4 gap-3">
+                    {editorialH2("Nossos produtos")}
+                    <span className="text-xs text-text/45 pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>{products.length} {products.length === 1 ? "item" : "itens"}</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
                     {products.map((p, i) => (
@@ -4826,16 +5062,26 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             // Trust signals — chips evidentes no commodity, linha discreta no produto
             const trustBlock = isProdutoMode ? (
               <section key="trust" className="border-t border-white/8 pt-6">
-                <h3 className="text-xs font-semibold text-text/50 uppercase tracking-wider mb-3">Procedência verificada</h3>
-                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                  <span className="inline-flex items-center gap-1.5 text-text/70">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <span className="block" style={{ width: "24px", height: "1.5px", background: "#E0BC8A" }} />
+                  <h3 style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.22em",
+                    color: "#E8C795",
+                  }}>Origem reconhecida</h3>
+                </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
+                  <span className="inline-flex items-center gap-1.5 text-text/75">
                     <ShieldCheck size={14} className="text-accent" /> EUDR conforme
                   </span>
-                  <span className="inline-flex items-center gap-1.5 text-text/70">
-                    <Globe size={14} className="text-accent" /> PRODES/INPE verificado
+                  <span className="inline-flex items-center gap-1.5 text-text/75">
+                    <Globe size={14} className="text-accent" /> PRODES/INPE registrado
                   </span>
                   {displayCerts.map((c, i) => (
-                    <span key={i} className="inline-flex items-center gap-1.5 text-text/70">
+                    <span key={i} className="inline-flex items-center gap-1.5 text-text/75">
                       <CheckCircle2 size={14} className="text-accent" /> {c}
                     </span>
                   ))}
@@ -4898,11 +5144,9 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             // Práticas
             const praticasBlock = displayPractices.length > 0 ? (
               <section key="praticas">
-                <div className="flex items-baseline justify-between mb-3">
-                  <h2 className={`${isProdutoMode ? "text-[20px] md:text-[22px]" : "text-[18px]"} font-semibold text-text leading-snug`}>
-                    {isProdutoMode ? "Como produzimos" : "Práticas declaradas"}
-                  </h2>
-                  <span className="text-xs text-text/35 italic">Autodeclaração do produtor</span>
+                <div className="flex items-end justify-between mb-3 gap-3">
+                  {editorialH2(isProdutoMode ? "Como produzimos" : "Práticas declaradas")}
+                  <span className="text-xs text-text/35 italic pb-1" style={{ fontFamily: "'Inter', sans-serif" }}>Autodeclaração do produtor</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                   {displayPractices.map((p) => (
@@ -4931,12 +5175,10 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             // Atividade
             const atividadeBlock = (
               <section key="atividade">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className={`${isProdutoMode ? "text-[20px] md:text-[22px]" : "text-[18px]"} font-semibold text-text leading-snug`}>
-                    {isProdutoMode ? "Histórico do produto" : "Histórico de atividade"}
-                  </h2>
+                <div className="flex items-end justify-between mb-4 gap-3">
+                  {editorialH2(isProdutoMode ? "Histórico do produto" : "Histórico de atividade")}
                   {displayEvents.length > 0 && (
-                    <span className="text-xs text-accent font-semibold">{displayEvents.length} {displayEvents.length === 1 ? "evento" : "eventos"}</span>
+                    <span className="text-xs text-accent font-semibold pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>{displayEvents.length} {displayEvents.length === 1 ? "evento" : "eventos"}</span>
                   )}
                 </div>
                 {displayEvents.length === 0 ? (
@@ -4998,11 +5240,9 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
 
             const lotsMapBlock = lotsWithPoly.length > 0 ? (
               <section key="lotsmap">
-                <div className="flex items-baseline justify-between mb-3">
-                  <h2 className={`${isProdutoMode ? "text-[20px] md:text-[22px]" : "text-[18px]"} font-semibold text-text leading-snug`}>
-                    {isProdutoMode ? "De onde vem o produto" : "Lotes mapeados"}
-                  </h2>
-                  <span className="text-xs text-text/35">
+                <div className="flex items-end justify-between mb-3 gap-3">
+                  {editorialH2(isProdutoMode ? "De onde vem o produto" : "Lotes mapeados")}
+                  <span className="text-xs text-text/35 pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>
                     {lotsWithPoly.length} {lotsWithPoly.length === 1 ? "lote georreferenciado" : "lotes georreferenciados"}
                   </span>
                 </div>
@@ -5040,21 +5280,69 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         <aside className="hidden md:block">
           <div className="sticky top-20 space-y-4">
             {canSendProposal ? (
-              <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
-                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">
-                  {isProdutoMode ? "Comprar deste produtor" : "Faça uma proposta direta"}
-                </h3>
-                <p className="text-sm text-text/55 leading-relaxed mb-4">
-                  {isProdutoMode
-                    ? `Fale direto com ${displayFarmName || "o produtor"} sobre disponibilidade, lotes e distribuição.`
-                    : `Sem intermediários — conexão direta com ${displayFarmName || "o produtor"} para volume, prazo e logística.`}
-                </p>
-                <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
-                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
-                  <Send size={14} /> {isProdutoMode ? "Quero comprar" : "Enviar proposta"}
-                </button>
-                <p className="text-[12px] text-text/40 text-center mt-3">Resposta em até 48h</p>
-              </div>
+              isProdutoMode ? (
+                // Luxury cream paper card
+                <div className="p-6" style={{
+                  background: "rgba(250, 247, 240, 0.97)",
+                  boxShadow: "0 30px 80px -24px rgba(0,0,0,0.45), 0 0 0 1px rgba(26,24,20,0.05)",
+                  borderRadius: "2px",
+                }}>
+                  <span className="block mb-3" style={{ width: "28px", height: "2px", background: "#C8A878" }} />
+                  <h3 style={{
+                    fontFamily: "'Fraunces', serif",
+                    fontSize: "22px",
+                    fontWeight: 500,
+                    letterSpacing: "-0.012em",
+                    color: "#1A1814",
+                    lineHeight: 1.15,
+                  }} className="mb-2.5">
+                    Comprar deste produtor
+                  </h3>
+                  <p style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: "13.5px",
+                    lineHeight: 1.55,
+                    color: "rgba(26, 24, 20, 0.62)",
+                  }} className="mb-5">
+                    Fale direto com {displayFarmName || "o produtor"} sobre disponibilidade, lotes e distribuição.
+                  </p>
+                  <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
+                    className="w-full py-3 transition-all flex items-center justify-center gap-2"
+                    style={{
+                      background: "#1F3A2E",
+                      color: "#FAF7F0",
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.18em",
+                      borderRadius: "2px",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#284C3C"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#1F3A2E"; }}>
+                    <Send size={13} /> Quero comprar
+                  </button>
+                  <p className="text-center mt-3" style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: "11px",
+                    color: "rgba(26, 24, 20, 0.42)",
+                  }}>Resposta em até 48h</p>
+                </div>
+              ) : (
+                <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
+                  <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">
+                    Faça uma proposta direta
+                  </h3>
+                  <p className="text-sm text-text/55 leading-relaxed mb-4">
+                    Sem intermediários — conexão direta com {displayFarmName || "o produtor"} para volume, prazo e logística.
+                  </p>
+                  <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
+                    className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+                    <Send size={14} /> Enviar proposta
+                  </button>
+                  <p className="text-[12px] text-text/40 text-center mt-3">Resposta em até 48h</p>
+                </div>
+              )
             ) : isViewingOther ? (
               <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
                 <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">
