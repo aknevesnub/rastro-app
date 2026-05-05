@@ -4840,23 +4840,36 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const nextItem = completionItems.find(i => !i.done);
   const showCompleteness = !isViewingOther && completionPct < 100;
 
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-32 md:pb-12">
+  // ── Lotes com polígono georreferenciado ────────────────────────────────────
+  type AnyLot = (typeof displayLots)[number] & {
+    geoPolygon?: { lat: number; lng: number }[];
+    mapPoints?: [number, number][];
+  };
+  const lotsWithPoly: { id: string; name: string; crop: string; area?: number | string; points: [number, number][] }[] =
+    (displayLots as AnyLot[])
+      .map(l => {
+        const polyPoints: [number, number][] = (l.geoPolygon ?? []).map(g => [g.lat, g.lng]);
+        const localPoints: [number, number][] = (l.mapPoints ?? []) as [number, number][];
+        const points = polyPoints.length ? polyPoints : localPoints;
+        return points.length >= 3
+          ? { id: String(l.id), name: l.name, crop: l.crop, area: l.area, points }
+          : null;
+      })
+      .filter((x): x is { id: string; name: string; crop: string; area?: number | string; points: [number, number][] } => !!x);
 
-      {/* ── Top action bar (sticky) ── */}
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-32 md:pb-16">
+
+      {/* ── Top bar ── */}
       <div className="sticky top-0 z-40 bg-bg/85 backdrop-blur-xl border-b border-white/8">
-        <div className="max-w-6xl mx-auto px-4 md:px-8 h-14 flex items-center justify-between gap-3">
+        <div className="max-w-5xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between gap-3">
           <button onClick={handleBack} className="flex items-center gap-1.5 text-text/70 hover:text-text transition-colors">
             <ChevronLeft size={18} />
             <span className="text-sm font-medium">Voltar</span>
           </button>
           <div className="flex items-center gap-2">
             <button onClick={() => doShare(profileUrl, displayFarmName || "Fazenda", addToast)}
-              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full text-text/70 hover:text-text hover:bg-white/5 transition-colors text-xs font-semibold">
-              <Share2 size={14} /> Compartilhar
-            </button>
-            <button onClick={() => doShare(profileUrl, displayFarmName || "Fazenda", addToast)}
-              className="md:hidden w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-text/70 hover:text-text">
+              className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-text/70 hover:text-text transition-colors">
               <Share2 size={15} />
             </button>
             {canSendProposal && (
@@ -4869,783 +4882,222 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
         </div>
       </div>
 
-      {/* ── Completeness banner (só dono · IKEA effect + Zeigarnik) ── */}
+      {/* ── Completeness banner (owner only) ── */}
       {showCompleteness && (
-        <div className="border-b border-white/8" style={{ background: "linear-gradient(to right, rgba(31, 58, 46, 0.18), rgba(15, 13, 10, 0.4))" }}>
-          <div className="max-w-6xl mx-auto px-4 md:px-8 py-4 md:py-5">
-            <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
-              {/* Score + progress */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-3 mb-2">
-                  <span className="text-[10px] font-bold uppercase text-text/55" style={{ letterSpacing: "0.22em" }}>
-                    Sua vitrine
-                  </span>
-                  <span className="text-[10px] font-bold uppercase" style={{ letterSpacing: "0.22em", color: "#E0BC8A" }}>
-                    {completionDone}/{completionTotal} prontos
-                  </span>
+        <div className="border-b border-white/8 bg-white/[0.02]">
+          <div className="max-w-5xl mx-auto px-4 md:px-6 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-1.5">
+                <div className="flex-1 h-1.5 bg-white/8 rounded-full overflow-hidden">
+                  <div className="h-full bg-accent transition-all duration-700" style={{ width: `${completionPct}%` }} />
                 </div>
-                {/* Progress rule */}
-                <div className="relative h-[3px] bg-white/8 rounded-full overflow-hidden mb-2">
-                  <div
-                    className="absolute inset-y-0 left-0 transition-all duration-700"
-                    style={{
-                      width: `${completionPct}%`,
-                      background: "linear-gradient(to right, #C8A878, #E0BC8A)",
-                      boxShadow: "0 0 12px rgba(224, 188, 138, 0.55)",
-                    }}
-                  />
-                </div>
-                <p className="text-[13px] text-text/70 leading-snug">
-                  {completionPct < 50 && nextItem && (
-                    <>Mostre tudo que sua fazenda tem. <span className="text-text/90 font-medium">Próximo passo: {nextItem.label.toLowerCase()}.</span></>
-                  )}
-                  {completionPct >= 50 && completionPct < 85 && nextItem && (
-                    <>Você está em boa forma. Falta {nextItem.label.toLowerCase()} para impressionar comprador europeu.</>
-                  )}
-                  {completionPct >= 85 && nextItem && (
-                    <span style={{ color: "#E8C795", fontWeight: 500 }}>
-                      Quase lá. Só {completionTotal - completionDone} {completionTotal - completionDone === 1 ? "item" : "itens"} para sua vitrine ficar completa.
-                    </span>
-                  )}
-                </p>
+                <span className="text-xs font-semibold text-text/50 shrink-0">{completionDone}/{completionTotal}</span>
               </div>
-              {/* Next CTA */}
-              {nextItem && (
-                <button
-                  onClick={() => go(nextItem.step)}
-                  className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 transition-all"
-                  style={{
-                    background: "#E0BC8A",
-                    color: "#1A1814",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.18em",
-                    borderRadius: "2px",
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#E8C795"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#E0BC8A"; }}
-                >
-                  {nextItem.cta}
-                  <ChevronRight size={13} />
-                </button>
-              )}
+              <p className="text-xs text-text/55">
+                {nextItem ? <>Próximo: <span className="text-text/80 font-medium">{nextItem.label}</span></> : "Vitrine completa!"}
+              </p>
             </div>
+            {nextItem && (
+              <button onClick={() => go(nextItem.step)}
+                className="shrink-0 px-4 py-2 bg-accent text-bg text-xs font-semibold rounded-lg hover:bg-accent/90 transition-colors">
+                {nextItem.cta}
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Hero ── */}
-      {isProdutoMode ? (
-        // Modo produto: cover editorial fullbleed com nome em destaque sobreposto
-        <div className="relative w-full">
-          <div
-            className="relative w-full aspect-[16/9] md:aspect-[21/9] bg-white/5 overflow-hidden cursor-pointer"
-            onClick={() => hasGallery && setGalleryIdx(0)}
-          >
-            {displayCover
-              ? <img src={displayCover} alt={displayFarmName} decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} />
-              : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/15 to-bg">
-                  <span className="text-7xl font-medium text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
-                </div>}
-            {/* Gradient bottom para legibilidade do nome */}
-            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-bg via-bg/60 to-transparent pointer-events-none" />
-            {hasGallery && (
-              <button onClick={(e) => { e.stopPropagation(); setGalleryIdx(0); }}
-                className="absolute bottom-4 right-4 px-3.5 py-2 rounded-full bg-bg/90 backdrop-blur-sm text-text text-xs font-medium hover:bg-bg transition-colors flex items-center gap-1.5">
-                <ImageIcon size={12} /> {allPhotos.length} {allPhotos.length === 1 ? "foto" : "fotos"}
-              </button>
-            )}
-          </div>
-          {/* Nome editorial logo abaixo do cover */}
-          <div className="max-w-5xl mx-auto px-4 md:px-8 -mt-14 md:-mt-20 relative z-10">
-            {/* Eyebrow gold — escape "verificado" */}
-            <div className="flex items-center gap-3 mb-4 md:mb-5 pl-[88px] md:pl-[112px]">
-              <span className="block w-10" style={{ height: "2px", background: "#E0BC8A", boxShadow: "0 0 10px rgba(224, 188, 138, 0.4)" }} />
-              <span style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: "10px",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.24em",
-                color: "#E8C795",
-                textShadow: "0 1px 8px rgba(15, 13, 10, 0.65)",
-              }}>
-                Origem reconhecida · 2026
-              </span>
+      {/* ── MAP HERO ── */}
+      <div className="relative w-full overflow-hidden" style={{ height: "min(65vh, 560px)" }}>
+        {lotsWithPoly.length > 0 ? (
+          <>
+            <div className="absolute inset-0">
+              <LotsOverviewMap lots={lotsWithPoly} height={560} />
             </div>
-            <div className="flex items-end gap-4 md:gap-5">
-              <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-bg bg-white/5 shrink-0 shadow-2xl">
-                {displayLogo
-                  ? <LogoImg src={displayLogo} transform={displayLogoTransform} />
-                  : <div className="w-full h-full flex items-center justify-center text-text/40 font-semibold text-2xl">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
+            <div className="absolute inset-x-0 bottom-0 pointer-events-none"
+              style={{ background: "linear-gradient(to top, rgba(14,14,14,0.95) 0%, rgba(14,14,14,0.55) 45%, transparent 100%)" }}>
+              <div className="px-4 md:px-8 pb-6 pt-20 flex items-end gap-4">
+                {displayLogo && (
+                  <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-white/25 bg-bg shrink-0 shadow-xl pointer-events-auto">
+                    <LogoImg src={displayLogo} transform={displayLogoTransform} />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-2xl md:text-[2rem] font-bold text-white leading-tight tracking-tight drop-shadow-lg">
+                    {displayFarmName || "Fazenda"}
+                  </h1>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    {displayLocation && (
+                      <span className="text-white/70 text-sm flex items-center gap-1.5">
+                        <MapPin size={12} /> {displayLocation}
+                      </span>
+                    )}
+                    {totalArea > 0 && (
+                      <span className="text-white/55 text-sm tabular-nums font-mono">
+                        {totalArea.toLocaleString("pt-BR")} ha
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="shrink-0 px-4 py-2.5 rounded-xl bg-bg/80 backdrop-blur border border-white/15 text-center pointer-events-auto">
+                  <div className="text-2xl font-bold text-white leading-none tabular-nums">{lotsWithPoly.length}</div>
+                  <div className="text-[9px] text-white/50 uppercase tracking-widest mt-0.5">lotes</div>
+                </div>
               </div>
-              <div className="flex-1 min-w-0 pb-1 md:pb-2">
-                <h1 style={{
-                  fontFamily: "'Fraunces', 'Times New Roman', serif",
-                  fontSize: "clamp(1.75rem, 4.5vw, 2.5rem)",
-                  fontWeight: 500,
-                  letterSpacing: "-0.018em",
-                  lineHeight: 1.05,
-                  color: "var(--text, #FAF7F0)",
-                }}>
+            </div>
+          </>
+        ) : (
+          <>
+            {displayCover ? (
+              <img src={displayCover} alt={displayFarmName ?? ""} decoding="async"
+                className="absolute inset-0 w-full h-full object-cover"
+                style={displayCoverTransform ? { transform: `translate(${displayCoverTransform.x}px, ${displayCoverTransform.y}px) scale(${displayCoverTransform.scale})`, transformOrigin: "center" } : undefined} />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-accent/10 to-bg">
+                <span className="text-[8rem] font-black text-text/5 uppercase select-none">{(displayFarmName || "F").slice(0, 2)}</span>
+              </div>
+            )}
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(14,14,14,0.9) 0%, transparent 55%)" }} />
+            <div className="absolute bottom-0 left-0 right-0 px-4 md:px-8 pb-6 pt-16 flex items-end gap-4">
+              {displayLogo && (
+                <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-white/25 bg-bg shrink-0 shadow-xl">
+                  <LogoImg src={displayLogo} transform={displayLogoTransform} />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl md:text-[2rem] font-bold text-white leading-tight tracking-tight">
                   {displayFarmName || "Fazenda"}
                 </h1>
                 {displayLocation && (
-                  <p className="text-sm md:text-[15px] text-text/60 mt-2 flex items-center gap-1.5" style={{ fontFamily: "'Inter', sans-serif" }}>
-                    <MapPin size={14} /> {displayLocation}
-                    {totalArea > 0 && <span className="text-text/40"> · ~<span style={{ fontVariantNumeric: "tabular-nums" }}>{totalArea.toLocaleString("pt-BR")}</span> ha</span>}
-                  </p>
-                )}
-                {displayDescription && (
-                  <p className="hidden md:block mt-3 italic text-text/55" style={{
-                    fontFamily: "'Fraunces', 'Times New Roman', serif",
-                    fontWeight: 300,
-                    fontSize: "clamp(15px, 1.4vw, 18px)",
-                    lineHeight: 1.45,
-                    maxWidth: "44rem",
-                  }}>
-                    {(displayDescription.split(/[.!?]/)[0] || "").trim()}
-                    {displayDescription.split(/[.!?]/)[0] && "."}
-                  </p>
+                  <span className="text-white/70 text-sm flex items-center gap-1.5 mt-1">
+                    <MapPin size={12} /> {displayLocation}
+                    {totalArea > 0 && <span className="ml-2 font-mono">{totalArea.toLocaleString("pt-BR")} ha</span>}
+                  </span>
                 )}
               </div>
             </div>
-          </div>
-        </div>
-      ) : (
-        // Modo commodity: grid 2-foto Airbnb-style atual
-        <div className="max-w-6xl mx-auto px-4 md:px-8 pt-4 md:pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-2xl overflow-hidden">
-            {/* Main cover */}
-            <div className="relative aspect-[4/3] md:aspect-[5/4] bg-white/5 group cursor-pointer"
-              onClick={() => hasGallery && setGalleryIdx(0)}>
-              {displayCover
-                ? <img src={displayCover} alt={displayFarmName} decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", transform: `translate(${displayCoverTransform?.x ?? 0}px, ${displayCoverTransform?.y ?? 0}px) scale(${displayCoverTransform?.scale ?? 1})`, transformOrigin: "center" }} className="transition-transform duration-500 group-hover:scale-[1.02]" />
-                : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/15 to-bg">
-                    <span className="text-6xl font-medium text-text/15 uppercase">{(displayFarmName || "?").slice(0, 2)}</span>
-                  </div>}
-            </div>
-
-            {/* Photo grid 2x2 (desktop only) */}
-            {hasGallery && (
-              <div className="hidden md:grid grid-cols-2 grid-rows-2 gap-2">
-                {heroPhotos.slice(0, 4).map((p, i) => (
-                  <button key={i} onClick={() => setGalleryIdx(i)}
-                    className="relative bg-white/5 overflow-hidden group">
-                    <img src={p.src} alt={p.lotName} loading="lazy" decoding="async"
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined} />
-                    {i === 3 && allPhotos.length > 4 && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <span className="text-white text-sm font-semibold">+{allPhotos.length - 4} fotos</span>
-                      </div>
-                    )}
-                  </button>
-                ))}
-                {heroPhotos.length < 4 && Array.from({ length: 4 - heroPhotos.length }).map((_, i) => (
-                  <div key={`ph-${i}`} className="bg-white/5" />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {hasGallery && (
-            <button onClick={() => setGalleryIdx(0)}
-              className="md:hidden mt-2 text-xs font-semibold text-text/70 underline underline-offset-4">
-              Ver todas as {allPhotos.length} fotos
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Body 2-column ── */}
-      <div className={`max-w-6xl mx-auto px-4 md:px-8 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-8 ${isProdutoMode ? "pt-10 md:pt-14" : "pt-8"}`}>
-
-        {/* ── Coluna esquerda (conteúdo) — ordem e estilo dependem do modo ── */}
-        <div className="md:col-span-2 space-y-10">
-          {(() => {
-            // ─── Blocos reutilizáveis ───
-            // Identity (logo + nome + location) — só no commodity (no produto, está no hero)
-            const identityBlock = (
-              <div key="identity">
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl overflow-hidden border border-white/15 bg-white/5 shrink-0 shadow-lg">
-                    {displayLogo
-                      ? <LogoImg src={displayLogo} transform={displayLogoTransform} />
-                      : <div className="w-full h-full flex items-center justify-center text-text/40 font-semibold">{(displayFarmName || "?").slice(0, 2).toUpperCase()}</div>}
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <h1 className="text-[22px] md:text-[28px] font-semibold tracking-tight text-text leading-snug">
-                      {displayFarmName || "Fazenda"}
-                    </h1>
-                    {displayLocation && (
-                      <p className="text-sm text-text/55 mt-1 flex items-center gap-1.5">
-                        <MapPin size={13} /> {displayLocation}
-                        {totalArea > 0 && <span> · {totalArea.toLocaleString("pt-BR")} ha</span>}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {displayDescription && (
-                  <p className="text-[15px] text-text/75 leading-relaxed">{displayDescription}</p>
-                )}
-              </div>
-            );
-
-            // Editorial section heading helper — Inter restrained no produto, gold rule mantém o tom
-            const editorialH2 = (text: string) => isProdutoMode ? (
-              <div className="mb-4">
-                <span className="block mb-2.5" style={{ width: "28px", height: "2px", background: "#E0BC8A" }} />
-                <h2 className="text-[20px] md:text-[22px] font-semibold text-text leading-snug" style={{ letterSpacing: "-0.01em" }}>
-                  {text}
-                </h2>
-              </div>
-            ) : (
-              <h2 className="text-[18px] font-semibold text-text leading-snug mb-3">{text}</h2>
-            );
-
-            // Sobre/História (descrição rica) — destaque no produto
-            const aboutBlock = displayDescription ? (
-              <section key="about">
-                {editorialH2("Sobre a fazenda")}
-                <p className="text-[16px] md:text-[17px] text-text/80 leading-relaxed whitespace-pre-line" style={{ fontFamily: "'Inter', sans-serif" }}>
-                  {displayDescription}
-                </p>
-              </section>
-            ) : null;
-
-            // Pull quote editorial — primeira frase rica em Fraunces grande (produto only)
-            const pullQuoteSentences = displayDescription
-              ? displayDescription.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 30)
-              : [];
-            const pullQuote = pullQuoteSentences.length > 1 ? pullQuoteSentences[1] : null;
-            const pullQuoteBlock = (isProdutoMode && pullQuote) ? (
-              <section key="pullquote" className="py-2">
-                <div className="flex items-start gap-5 md:gap-7">
-                  <span className="block shrink-0 mt-3" style={{ width: "2px", height: "auto", alignSelf: "stretch", background: "linear-gradient(to bottom, #E0BC8A, transparent)" }} />
-                  <blockquote style={{
-                    fontFamily: "'Fraunces', 'Times New Roman', serif",
-                    fontSize: "clamp(1.35rem, 2.6vw, 1.85rem)",
-                    fontWeight: 300,
-                    fontStyle: "italic",
-                    lineHeight: 1.35,
-                    letterSpacing: "-0.012em",
-                    color: "rgba(250, 247, 240, 0.92)",
-                    maxWidth: "44rem",
-                  }}>
-                    {pullQuote.replace(/\.$/, "")}.
-                  </blockquote>
-                </div>
-              </section>
-            ) : null;
-
-            // Hero stats — banner editorial com 4 KPIs grandes (produto only)
-            const heroStatsBlock = isProdutoMode ? (
-              <section key="herostats" className="py-2">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 md:gap-x-8" style={{
-                  borderTop: "1px solid rgba(224, 188, 138, 0.25)",
-                  borderBottom: "1px solid rgba(224, 188, 138, 0.25)",
-                  paddingTop: "clamp(1.25rem, 2vw, 1.75rem)",
-                  paddingBottom: "clamp(1.25rem, 2vw, 1.75rem)",
-                }}>
-                  {[
-                    { v: totalArea > 0 ? `~${totalArea.toLocaleString("pt-BR")}` : "—", l: "hectares", suffix: totalArea > 0 ? "estimados" : null },
-                    { v: String(displayLots.length || 0), l: displayLots.length === 1 ? "lote mapeado" : "lotes mapeados", suffix: null },
-                    { v: String(products.length || 0), l: products.length === 1 ? "produto" : "produtos", suffix: null },
-                    { v: String((displayCerts.length || 0) + 1), l: displayCerts.length === 0 ? "selo" : "selos", suffix: null },
-                  ].map((s, i) => (
-                    <div key={i} className="flex flex-col">
-                      <div className="font-semibold text-text" style={{
-                        fontSize: "clamp(2rem, 4.5vw, 2.75rem)",
-                        letterSpacing: "-0.02em",
-                        lineHeight: 1,
-                        fontVariantNumeric: "tabular-nums",
-                      }}>{s.v}</div>
-                      <div className="mt-2 flex items-baseline gap-1.5 text-[11px] font-semibold uppercase text-text/55" style={{ letterSpacing: "0.18em" }}>
-                        {s.l}
-                        {s.suffix && <span className="font-normal normal-case tracking-normal text-text/35 text-[11px]">· {s.suffix}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null;
-
-            // Galeria editorial — todas as fotos da fazenda (produto only)
-            const galleryBlock = (isProdutoMode && allPhotos.length > 0) ? (
-              <section key="gallery">
-                <div className="flex items-end justify-between mb-4 gap-3">
-                  {editorialH2("A fazenda em fotos")}
-                  <span className="text-xs text-text/35 pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>{allPhotos.length} {allPhotos.length === 1 ? "imagem" : "imagens"}</span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
-                  {allPhotos.slice(0, 9).map((p, i) => {
-                    // Layout editorial: primeira foto ocupa 2x2 no desktop
-                    const isFeature = i === 0;
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => setGalleryIdx(i)}
-                        className={`group relative overflow-hidden bg-white/5 ${isFeature ? "col-span-2 row-span-2 aspect-square md:aspect-auto" : "aspect-square"}`}
-                        style={{ borderRadius: "2px" }}
-                      >
-                        <img
-                          src={p.src}
-                          alt={p.lotName}
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
-                          style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined}
-                        />
-                        {/* Crop label — bottom left, editorial */}
-                        <div className="absolute bottom-0 left-0 right-0 p-2.5 md:p-3 bg-gradient-to-t from-[rgba(15,13,10,0.88)] via-[rgba(15,13,10,0.4)] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          <div className="flex items-center gap-2">
-                            <span className="block" style={{ width: "12px", height: "1.5px", background: "#E0BC8A" }} />
-                            <span className="text-[10px] font-semibold text-white/95 uppercase tracking-widest" style={{ fontFamily: "'Inter', sans-serif" }}>{p.crop || p.lotName}</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {allPhotos.length > 9 && (
-                  <button
-                    onClick={() => setGalleryIdx(9)}
-                    className="mt-4 inline-flex items-center gap-2 transition-colors"
-                    style={{
-                      fontFamily: "'Inter', sans-serif",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.2em",
-                      color: "#E8C795",
-                      borderBottom: "1.5px solid #E0BC8A",
-                      paddingBottom: "4px",
-                    }}
-                  >
-                    Ver todas as {allPhotos.length} fotos <ChevronRight size={13} />
-                  </button>
-                )}
-              </section>
-            ) : null;
-
-            // Reconhecimentos — cards editoriais para certificações (produto only)
-            const recognitionBlock = (isProdutoMode && (displayCerts.length > 0 || displayPractices.length > 0)) ? (
-              <section key="recognition">
-                {editorialH2("Selos & reconhecimentos")}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* EUDR sempre presente */}
-                  <div className="p-5 flex items-start gap-4" style={{
-                    background: "rgba(31, 58, 46, 0.15)",
-                    border: "1px solid rgba(224, 188, 138, 0.2)",
-                    borderRadius: "2px",
-                  }}>
-                    <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{
-                      background: "rgba(224, 188, 138, 0.12)",
-                      border: "1px solid rgba(224, 188, 138, 0.3)",
-                    }}>
-                      <ShieldCheck size={18} style={{ color: "#E0BC8A" }} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[15px] font-semibold text-text leading-snug" style={{ letterSpacing: "-0.005em" }}>EUDR — Regulamento UE 2023/1115</div>
-                      <p className="mt-1.5 text-[13px] text-text/55 leading-relaxed">
-                        Origem rastreável para o mercado europeu. Documentação organizada na plataforma.
-                      </p>
-                    </div>
-                  </div>
-                  {displayCerts.map((c, i) => (
-                    <div key={i} className="p-5 flex items-start gap-4" style={{
-                      background: "rgba(255, 255, 255, 0.025)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: "2px",
-                    }}>
-                      <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{
-                        background: "rgba(224, 188, 138, 0.08)",
-                        border: "1px solid rgba(224, 188, 138, 0.2)",
-                      }}>
-                        <CheckCircle2 size={18} style={{ color: "#E0BC8A" }} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[15px] font-semibold text-text leading-snug" style={{ letterSpacing: "-0.005em" }}>{c}</div>
-                        <p className="mt-1.5 text-[12px] text-text/45 leading-relaxed">
-                          Autodeclarado pelo produtor
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null;
-
-            // Produtos — chips simples no commodity, cards editoriais no produto
-            const productsBlock = products.length > 0 ? (
-              isProdutoMode ? (
-                <section key="products">
-                  <div className="flex items-end justify-between mb-4 gap-3">
-                    {editorialH2("Nossos produtos")}
-                    <span className="text-xs text-text/45 pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>{products.length} {products.length === 1 ? "item" : "itens"}</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
-                    {products.map((p, i) => (
-                      <div key={i} className="group rounded-2xl border border-white/10 bg-white/[0.02] hover:border-white/25 hover:bg-white/[0.04] transition-all overflow-hidden">
-                        <div className="aspect-[4/5] flex items-center justify-center bg-gradient-to-br from-accent/10 to-bg/40">
-                          <Sprout size={28} className="text-accent/60 group-hover:text-accent transition-colors" />
-                        </div>
-                        <div className="p-3">
-                          <p className="text-sm font-semibold text-text leading-snug">{p}</p>
-                          <p className="text-[11px] text-text/40 mt-0.5">Produzido na fazenda</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <section key="products">
-                  <h2 className="text-[18px] font-semibold text-text mb-3 leading-snug">O que produzem</h2>
-                  <div className="flex gap-2 flex-wrap">
-                    {products.map((p, i) => (
-                      <div key={i} className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-white/12 bg-white/[0.02] hover:border-white/25 transition-colors">
-                        <Sprout size={13} className="text-accent" />
-                        <span className="text-sm font-medium text-text">{p}</span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )
-            ) : null;
-
-            // Trust signals — chips evidentes no commodity, linha discreta no produto
-            const trustBlock = isProdutoMode ? (
-              <section key="trust" className="border-t border-white/8 pt-6">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <span className="block" style={{ width: "24px", height: "1.5px", background: "#E0BC8A" }} />
-                  <h3 style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.22em",
-                    color: "#E8C795",
-                  }}>Origem reconhecida</h3>
-                </div>
-                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-                  <span className="inline-flex items-center gap-1.5 text-text/75">
-                    <ShieldCheck size={14} className="text-accent" /> EUDR conforme
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-text/75">
-                    <Globe size={14} className="text-accent" /> PRODES/INPE registrado
-                  </span>
-                  {displayCerts.map((c, i) => (
-                    <span key={i} className="inline-flex items-center gap-1.5 text-text/75">
-                      <CheckCircle2 size={14} className="text-accent" /> {c}
-                    </span>
-                  ))}
-                </div>
-              </section>
-            ) : (
-              <div key="trust" className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/25 text-accent text-xs font-semibold">
-                  <ShieldCheck size={13} strokeWidth={2.25} /> EUDR conforme
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
-                  <Globe size={12} /> PRODES/INPE verificado
-                </span>
-                {displayPractices.length > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
-                    <Leaf size={12} /> {displayPractices.length} {displayPractices.length === 1 ? "prática" : "práticas"} sustentáveis
-                  </span>
-                )}
-                {displayCerts.map((c, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/12 text-text/75 text-xs font-medium">
-                    <CheckCircle2 size={12} /> {c}
-                  </span>
-                ))}
-              </div>
-            );
-
-            // Stats — destaque no commodity, compacto inline no produto
-            const statsBlock = (
-              <div key="stats" className={isProdutoMode
-                ? "flex flex-wrap gap-x-8 gap-y-2 text-sm text-text/65"
-                : "grid grid-cols-3 gap-3 py-5 border-y border-white/8"}>
-                {isProdutoMode ? (
-                  <>
-                    <span><span className="font-semibold text-text">{displayLots.length}</span> {displayLots.length !== 1 ? "lotes" : "lote"} mapeado{displayLots.length !== 1 ? "s" : ""}</span>
-                    {totalArea > 0 && <span><span className="font-semibold text-text">{totalArea.toLocaleString("pt-BR")} ha</span> registrados</span>}
-                    <span><span className="font-semibold text-text">{displayCerts.length + 1}</span> certificaç{displayCerts.length + 1 !== 1 ? "ões" : "ão"}</span>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <div className="text-[22px] font-semibold text-text leading-none">{displayLots.length}</div>
-                      <div className="text-xs text-text/45 mt-1.5">Lote{displayLots.length !== 1 ? "s" : ""} mapeado{displayLots.length !== 1 ? "s" : ""}</div>
-                    </div>
-                    <div>
-                      <div className="text-[22px] font-semibold text-text leading-none">
-                        {totalArea > 0 ? totalArea.toLocaleString("pt-BR") : "—"}
-                        {totalArea > 0 && <span className="text-sm font-medium text-text/40 ml-1">ha</span>}
-                      </div>
-                      <div className="text-xs text-text/45 mt-1.5">Área registrada</div>
-                    </div>
-                    <div>
-                      <div className="text-[22px] font-semibold text-accent leading-none">{displayCerts.length + 1}</div>
-                      <div className="text-xs text-text/45 mt-1.5">Certificações</div>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-
-            // Práticas
-            const praticasBlock = displayPractices.length > 0 ? (
-              <section key="praticas">
-                <div className="flex items-end justify-between mb-3 gap-3">
-                  {editorialH2(isProdutoMode ? "Como produzimos" : "Práticas declaradas")}
-                  <span className="text-xs text-text/35 italic pb-1" style={{ fontFamily: "'Inter', sans-serif" }}>Autodeclaração do produtor</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                  {displayPractices.map((p) => (
-                    <div key={p.id} className="flex items-start gap-3 p-3.5 rounded-2xl border border-white/10 bg-white/[0.02]">
-                      <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-                        <Leaf size={14} className="text-accent" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-baseline gap-x-2">
-                          <span className="text-sm font-semibold text-text">{p.name}</span>
-                          {p.startDate && (
-                            <span className="text-[11px] font-medium text-accent/70">
-                              desde {new Date(p.startDate).toLocaleDateString("pt-BR")}
-                            </span>
-                          )}
-                        </div>
-                        {p.notes && <p className="text-xs text-text/55 mt-1 italic">"{p.notes}"</p>}
-                        {p.photoUrl && <img src={p.photoUrl} alt={p.name} loading="lazy" decoding="async" className="mt-2 w-full max-w-[180px] h-20 object-cover rounded-lg border border-white/10" />}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null;
-
-            // Atividade
-            const atividadeBlock = (
-              <section key="atividade">
-                <div className="flex items-end justify-between mb-4 gap-3">
-                  {editorialH2(isProdutoMode ? "Histórico do produto" : "Histórico de atividade")}
-                  {displayEvents.length > 0 && (
-                    <span className="text-xs text-accent font-semibold pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>{displayEvents.length} {displayEvents.length === 1 ? "evento" : "eventos"}</span>
-                  )}
-                </div>
-                {displayEvents.length === 0 ? (
-                  <div className="py-10 text-center rounded-2xl border border-white/8 bg-white/[0.02]">
-                    <Tractor size={24} className="text-text/25 mx-auto mb-2" />
-                    <p className="text-sm text-text/40">Nenhum registro ainda</p>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    {displayEvents.length > 1 && <div className="absolute left-[19px] top-10 bottom-10 w-px bg-white/10" />}
-                    <div className="space-y-2.5">
-                      {displayEvents.map((e, idx) => {
-                        const cfg = eventConfig[e.type] ?? eventConfig.update;
-                        return (
-                          <motion.div
-                            key={idx}
-                            initial={{ opacity: 0, x: -8 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: Math.min(idx * 0.035, 0.3) }}
-                            className="flex gap-3 items-start"
-                          >
-                            <div className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center z-10 ${cfg.color}`}>
-                              <EventIcon type={e.type} />
-                            </div>
-                            <div className="flex-1 rounded-2xl px-4 py-2.5 border border-white/8 bg-white/[0.02] hover:border-white/15 transition-colors">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-sm font-medium text-text leading-snug">{e.title}</p>
-                                <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
-                              </div>
-                              <p className="text-xs text-text/40 mt-1">{e.date}</p>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </section>
-            );
-
-            // Mapa de lotes — agrega todos os polígonos georreferenciados.
-            // Em commodity é "área registrada / verificada"; em produto é "terroir / origem".
-            // Pega geoPolygon (ApiLot, viewing other) ou mapPoints (Lot local, viewing self).
-            type AnyLot = (typeof displayLots)[number] & {
-              geoPolygon?: { lat: number; lng: number }[];
-              mapPoints?: [number, number][];
-            };
-            const lotsWithPoly: { id: string; name: string; crop: string; area?: number | string; points: [number, number][] }[] =
-              (displayLots as AnyLot[])
-                .map(l => {
-                  const polyPoints: [number, number][] = (l.geoPolygon ?? []).map(g => [g.lat, g.lng]);
-                  const localPoints: [number, number][] = (l.mapPoints ?? []) as [number, number][];
-                  const points = polyPoints.length ? polyPoints : localPoints;
-                  return points.length >= 3
-                    ? { id: String(l.id), name: l.name, crop: l.crop, area: l.area, points }
-                    : null;
-                })
-                .filter((x): x is { id: string; name: string; crop: string; area?: number | string; points: [number, number][] } => !!x);
-
-            const lotsMapBlock = lotsWithPoly.length > 0 ? (
-              <section key="lotsmap">
-                <div className="flex items-end justify-between mb-3 gap-3">
-                  {editorialH2(isProdutoMode ? "De onde vem o produto" : "Lotes mapeados")}
-                  <span className="text-xs text-text/35 pb-1" style={{ fontFamily: "'Inter', sans-serif", fontVariantNumeric: "tabular-nums" }}>
-                    {lotsWithPoly.length} {lotsWithPoly.length === 1 ? "lote georreferenciado" : "lotes georreferenciados"}
-                  </span>
-                </div>
-                <div className="rounded-2xl overflow-hidden border border-white/10 bg-white/[0.02]">
-                  <LotsOverviewMap lots={lotsWithPoly} height={320} />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 p-4 border-t border-white/8">
-                    {lotsWithPoly.map(l => (
-                      <div key={l.id} className="flex items-center gap-2 text-sm">
-                        <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
-                        <span className="font-medium text-text truncate">{l.name}</span>
-                        <span className="text-text/45 truncate">· {l.crop}</span>
-                        {l.area && Number(l.area) > 0 && (
-                          <span className="text-text/45 ml-auto whitespace-nowrap">{Number(l.area).toLocaleString("pt-BR")} ha</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <p className="text-[11px] text-text/35 mt-2 italic">
-                  Polígonos declarados pelo produtor. Cobertura PRODES/INPE para verificação satelital.
-                </p>
-              </section>
-            ) : null;
-
-            // ─── Ordem por modo ───
-            // Commodity: prova primeiro (identity → trust → stats → mapa → produtos → práticas → atividade)
-            // Produto:   narrativa primeiro (sobre → produtos → mapa terroir → práticas → atividade → stats → trust)
-            return isProdutoMode
-              // Showcase narrative: stats heroicos → sobre → quote editorial → galeria → produtos → mapa terroir → práticas → reconhecimentos → atividade → trust
-              ? [heroStatsBlock, aboutBlock, pullQuoteBlock, galleryBlock, productsBlock, lotsMapBlock, praticasBlock, recognitionBlock, atividadeBlock, trustBlock].filter(Boolean)
-              : [identityBlock, trustBlock, statsBlock, lotsMapBlock, productsBlock, praticasBlock, atividadeBlock].filter(Boolean);
-          })()}
-        </div>
-
-        {/* ── Coluna direita (sidebar conversão) ── */}
-        <aside className="hidden md:block">
-          <div className="sticky top-20 space-y-4">
-            {canSendProposal ? (
-              isProdutoMode ? (
-                // Luxury cream paper card
-                <div className="p-6" style={{
-                  background: "rgba(250, 247, 240, 0.97)",
-                  boxShadow: "0 30px 80px -24px rgba(0,0,0,0.45), 0 0 0 1px rgba(26,24,20,0.05)",
-                  borderRadius: "2px",
-                }}>
-                  <span className="block mb-3" style={{ width: "24px", height: "2px", background: "#C8A878" }} />
-                  <h3 className="mb-2.5 font-semibold" style={{
-                    fontSize: "19px",
-                    letterSpacing: "-0.012em",
-                    color: "#1A1814",
-                    lineHeight: 1.2,
-                  }}>
-                    Comprar deste produtor
-                  </h3>
-                  <p className="mb-5" style={{
-                    fontSize: "13.5px",
-                    lineHeight: 1.55,
-                    color: "rgba(26, 24, 20, 0.62)",
-                  }}>
-                    Fale direto com {displayFarmName || "o produtor"} sobre disponibilidade, lotes e distribuição.
-                  </p>
-                  <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
-                    className="w-full py-3 transition-all flex items-center justify-center gap-2"
-                    style={{
-                      background: "#1F3A2E",
-                      color: "#FAF7F0",
-                      fontFamily: "'Inter', sans-serif",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.18em",
-                      borderRadius: "2px",
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#284C3C"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#1F3A2E"; }}>
-                    <Send size={13} /> Quero comprar
-                  </button>
-                  <p className="text-center mt-3" style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: "11px",
-                    color: "rgba(26, 24, 20, 0.42)",
-                  }}>Resposta em até 48h</p>
-                </div>
-              ) : (
-                <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
-                  <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">
-                    Faça uma proposta direta
-                  </h3>
-                  <p className="text-sm text-text/55 leading-relaxed mb-4">
-                    Sem intermediários — conexão direta com {displayFarmName || "o produtor"} para volume, prazo e logística.
-                  </p>
-                  <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
-                    className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
-                    <Send size={14} /> Enviar proposta
-                  </button>
-                  <p className="text-[12px] text-text/40 text-center mt-3">Resposta em até 48h</p>
-                </div>
-              )
-            ) : isViewingOther ? (
-              <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-5">
-                <h3 className="text-[20px] font-semibold text-text leading-snug mb-2">
-                  {isProdutoMode ? "Interessado nestes produtos?" : "Quer fazer negócio?"}
-                </h3>
-                <p className="text-sm text-text/55 mb-4 leading-relaxed">
-                  {isProdutoMode
-                    ? "Cadastre-se para falar direto com a fazenda e descobrir onde comprar."
-                    : "Compradores cadastrados enviam propostas diretas a esta e outras fazendas."}
-                </p>
-                <button onClick={() => go(1)}
-                  className="w-full py-3 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors">
-                  Criar conta
-                </button>
-              </div>
-            ) : null}
-
-            {/* QR Code CTA — apenas dono */}
-            {!isViewingOther && user && (
-              <button onClick={() => go(10)}
-                className="w-full rounded-[14px] border border-white/12 bg-white/[0.02] hover:bg-white/[0.04] transition-colors p-4 flex items-center gap-3 text-left">
-                <div className="w-10 h-10 rounded-xl bg-accent/12 flex items-center justify-center text-accent shrink-0">
-                  <QrCode size={18} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-text">QR Code de rastreio</div>
-                  <div className="text-xs text-text/45 mt-0.5">Compartilhe sua origem</div>
-                </div>
-                <ChevronRight size={16} className="text-text/40 shrink-0" />
-              </button>
-            )}
-
-            {/* Trust mini-list */}
-            <div className="rounded-[14px] border border-white/12 bg-white/[0.02] p-4">
-              <p className="text-xs font-semibold text-text/50 mb-3">Por que confiar?</p>
-              <ul className="space-y-2.5 text-sm text-text/75">
-                <li className="flex items-start gap-2"><ShieldCheck size={14} className="text-accent mt-0.5 shrink-0" /> EUDR — Regulamento UE 2023/1115</li>
-                <li className="flex items-start gap-2"><Globe size={14} className="text-accent mt-0.5 shrink-0" /> Imagens PRODES/INPE para desmate</li>
-                <li className="flex items-start gap-2"><MapPin size={14} className="text-accent mt-0.5 shrink-0" /> Lotes com geocoordenadas registradas</li>
-              </ul>
-            </div>
-          </div>
-        </aside>
+          </>
+        )}
       </div>
 
-      {/* ── QR Code CTA mobile (apenas dono) ── */}
-      {!isViewingOther && user && (
-        <div className="md:hidden max-w-6xl mx-auto px-4 mt-8">
+      {/* ── Content ── */}
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-8 space-y-10">
+
+        {/* Lot cards */}
+        {lotsWithPoly.length > 0 && (
+          <section>
+            <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 md:overflow-visible">
+              {lotsWithPoly.map(l => (
+                <div key={l.id} className="shrink-0 w-52 md:w-auto rounded-xl border border-white/10 bg-white/[0.025] p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className="text-sm font-semibold text-text truncate">{l.name}</span>
+                    {l.area && Number(l.area) > 0 && (
+                      <span className="text-xs font-mono text-text/40 shrink-0">{Number(l.area).toLocaleString("pt-BR")} ha</span>
+                    )}
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-[11px] font-medium">
+                    <Sprout size={10} /> {l.crop}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Trust chips */}
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-semibold">
+            <ShieldCheck size={12} /> EUDR conforme
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 text-text/55 text-xs">
+            <Globe size={11} /> PRODES/INPE verificado
+          </span>
+          {displayPractices.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 text-text/55 text-xs">
+              <Leaf size={11} /> {displayPractices.length} práticas sustentáveis
+            </span>
+          )}
+          {displayCerts.map((c, i) => (
+            <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/10 text-text/55 text-xs">
+              <CheckCircle2 size={11} /> {c}
+            </span>
+          ))}
+        </div>
+
+        {/* About */}
+        {displayDescription && (
+          <section>
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">Sobre</h2>
+            <p className="text-[16px] md:text-[17px] text-text/75 leading-relaxed whitespace-pre-line">{displayDescription}</p>
+          </section>
+        )}
+
+        {/* Products */}
+        {products.length > 0 && (
+          <section>
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">O que produzem</h2>
+            <div className="flex flex-wrap gap-2">
+              {products.map((p, i) => (
+                <div key={i} className="flex items-center gap-2 px-3.5 py-2 rounded-lg border border-white/10 bg-white/[0.02]">
+                  <Sprout size={13} className="text-accent" />
+                  <span className="text-sm font-medium text-text">{p}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Practices */}
+        {displayPractices.length > 0 && (
+          <section>
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">Práticas declaradas</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {displayPractices.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                  <Leaf size={14} className="text-accent shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium text-text">{p.name}</span>
+                    {p.startDate && (
+                      <span className="ml-2 text-[11px] text-text/40">desde {new Date(p.startDate).toLocaleDateString("pt-BR")}</span>
+                    )}
+                    {p.notes && <p className="text-xs text-text/40 mt-0.5 italic">{p.notes}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-text/30 mt-2 italic">Autodeclaração do produtor</p>
+          </section>
+        )}
+
+        {/* Activity — owner with events */}
+        {!isViewingOther && displayEvents.length > 0 && (
+          <section>
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">Atividade recente</h2>
+            <div className="space-y-2">
+              {displayEvents.slice(0, 5).map((e, idx) => {
+                const cfg = eventConfig[e.type] ?? eventConfig.update;
+                return (
+                  <div key={idx} className="flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                    <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${cfg.color}`}>
+                      <EventIcon type={e.type} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text truncate">{e.title}</p>
+                      <p className="text-xs text-text/40">{e.date}</p>
+                    </div>
+                    <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.color}`}>{cfg.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* QR Code — owner */}
+        {!isViewingOther && user && (
           <button onClick={() => go(10)}
-            className="w-full rounded-[14px] border border-white/12 bg-white/[0.02] p-4 flex items-center gap-3 text-left">
-            <div className="w-10 h-10 rounded-xl bg-accent/12 flex items-center justify-center text-accent shrink-0">
+            className="w-full rounded-xl border border-white/12 bg-white/[0.02] hover:bg-white/[0.04] transition-colors p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-lg bg-accent/12 flex items-center justify-center text-accent shrink-0">
               <QrCode size={18} />
             </div>
             <div className="flex-1 min-w-0">
@@ -5654,14 +5106,37 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             </div>
             <ChevronRight size={16} className="text-text/40 shrink-0" />
           </button>
-        </div>
-      )}
+        )}
 
-      {/* ── Sticky CTA bottom mobile (proposta) ── */}
+        {/* Proposal CTA — desktop, viewing other */}
+        {canSendProposal && (
+          <div className="hidden md:block rounded-xl border border-white/12 bg-white/[0.02] p-5">
+            <h3 className="text-lg font-semibold text-text mb-1">Faça uma proposta</h3>
+            <p className="text-sm text-text/55 mb-4">Conexão direta com {displayFarmName || "o produtor"} — sem intermediários.</p>
+            <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
+              className="w-full py-3 rounded-lg bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+              <Send size={14} /> Enviar proposta
+            </button>
+          </div>
+        )}
+
+        {/* Register CTA — viewing other, not buyer */}
+        {isViewingOther && !canSendProposal && (
+          <div className="rounded-xl border border-white/12 bg-white/[0.02] p-5">
+            <h3 className="text-lg font-semibold text-text mb-1">Quer fazer negócio?</h3>
+            <p className="text-sm text-text/55 mb-4">Compradores cadastrados enviam propostas diretas.</p>
+            <button onClick={() => go(1)} className="w-full py-3 rounded-lg bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors">
+              Criar conta
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Sticky mobile proposal CTA ── */}
       {canSendProposal && (
         <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-bg/95 backdrop-blur-xl border-t border-white/10 px-4 py-3">
           <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
-            className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-semibold hover:bg-accent/90 transition-colors flex items-center justify-center gap-2">
+            className="w-full py-3.5 rounded-xl bg-accent text-bg text-sm font-semibold flex items-center justify-center gap-2">
             <Send size={15} /> Enviar proposta para {displayFarmName?.split(" ")[0] || "produtor"}
           </button>
         </div>
