@@ -5007,18 +5007,13 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
               </div>
             );
 
-            // Editorial section heading helper (luxury direction — produto mode)
+            // Editorial section heading helper — Inter restrained no produto, gold rule mantém o tom
             const editorialH2 = (text: string) => isProdutoMode ? (
               <div className="mb-4">
-                <span className="block mb-2.5" style={{ width: "32px", height: "2px", background: "#E0BC8A" }} />
-                <h2 style={{
-                  fontFamily: "'Fraunces', 'Times New Roman', serif",
-                  fontSize: "clamp(1.4rem, 2.6vw, 1.75rem)",
-                  fontWeight: 500,
-                  letterSpacing: "-0.012em",
-                  lineHeight: 1.1,
-                  color: "var(--text)",
-                }}>{text}</h2>
+                <span className="block mb-2.5" style={{ width: "28px", height: "2px", background: "#E0BC8A" }} />
+                <h2 className="text-[20px] md:text-[22px] font-semibold text-text leading-snug" style={{ letterSpacing: "-0.01em" }}>
+                  {text}
+                </h2>
               </div>
             ) : (
               <h2 className="text-[18px] font-semibold text-text leading-snug mb-3">{text}</h2>
@@ -5075,25 +5070,15 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                     { v: String((displayCerts.length || 0) + 1), l: displayCerts.length === 0 ? "selo" : "selos", suffix: null },
                   ].map((s, i) => (
                     <div key={i} className="flex flex-col">
-                      <div style={{
-                        fontFamily: "'Fraunces', 'Times New Roman', serif",
-                        fontSize: "clamp(2rem, 4.5vw, 3rem)",
-                        fontWeight: 500,
+                      <div className="font-semibold text-text" style={{
+                        fontSize: "clamp(2rem, 4.5vw, 2.75rem)",
                         letterSpacing: "-0.02em",
                         lineHeight: 1,
-                        color: "var(--text)",
                         fontVariantNumeric: "tabular-nums",
                       }}>{s.v}</div>
-                      <div className="mt-2 flex items-baseline gap-1.5" style={{
-                        fontFamily: "'Inter', sans-serif",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.18em",
-                        color: "rgba(250, 247, 240, 0.55)",
-                      }}>
+                      <div className="mt-2 flex items-baseline gap-1.5 text-[11px] font-semibold uppercase text-text/55" style={{ letterSpacing: "0.18em" }}>
                         {s.l}
-                        {s.suffix && <span className="italic font-normal normal-case tracking-normal text-text/35" style={{ fontFamily: "'Fraunces', serif", fontSize: "12px" }}>· {s.suffix}</span>}
+                        {s.suffix && <span className="font-normal normal-case tracking-normal text-text/35 text-[11px]">· {s.suffix}</span>}
                       </div>
                     </div>
                   ))}
@@ -5175,14 +5160,8 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                       <ShieldCheck size={18} style={{ color: "#E0BC8A" }} />
                     </div>
                     <div className="min-w-0">
-                      <div style={{
-                        fontFamily: "'Fraunces', serif",
-                        fontSize: "16px",
-                        fontWeight: 500,
-                        color: "var(--text)",
-                        letterSpacing: "-0.01em",
-                      }}>EUDR — Regulamento UE 2023/1115</div>
-                      <p className="mt-1.5 text-[13px] text-text/55 leading-relaxed" style={{ fontFamily: "'Inter', sans-serif" }}>
+                      <div className="text-[15px] font-semibold text-text leading-snug" style={{ letterSpacing: "-0.005em" }}>EUDR — Regulamento UE 2023/1115</div>
+                      <p className="mt-1.5 text-[13px] text-text/55 leading-relaxed">
                         Origem rastreável para o mercado europeu. Documentação organizada na plataforma.
                       </p>
                     </div>
@@ -5200,14 +5179,8 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                         <CheckCircle2 size={18} style={{ color: "#E0BC8A" }} />
                       </div>
                       <div className="min-w-0">
-                        <div style={{
-                          fontFamily: "'Fraunces', serif",
-                          fontSize: "16px",
-                          fontWeight: 500,
-                          color: "var(--text)",
-                          letterSpacing: "-0.01em",
-                        }}>{c}</div>
-                        <p className="mt-1.5 text-[13px] text-text/45 leading-relaxed italic" style={{ fontFamily: "'Fraunces', serif" }}>
+                        <div className="text-[15px] font-semibold text-text leading-snug" style={{ letterSpacing: "-0.005em" }}>{c}</div>
+                        <p className="mt-1.5 text-[12px] text-text/45 leading-relaxed">
                           Autodeclarado pelo produtor
                         </p>
                       </div>
@@ -5483,23 +5456,20 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                   boxShadow: "0 30px 80px -24px rgba(0,0,0,0.45), 0 0 0 1px rgba(26,24,20,0.05)",
                   borderRadius: "2px",
                 }}>
-                  <span className="block mb-3" style={{ width: "28px", height: "2px", background: "#C8A878" }} />
-                  <h3 style={{
-                    fontFamily: "'Fraunces', serif",
-                    fontSize: "22px",
-                    fontWeight: 500,
+                  <span className="block mb-3" style={{ width: "24px", height: "2px", background: "#C8A878" }} />
+                  <h3 className="mb-2.5 font-semibold" style={{
+                    fontSize: "19px",
                     letterSpacing: "-0.012em",
                     color: "#1A1814",
-                    lineHeight: 1.15,
-                  }} className="mb-2.5">
+                    lineHeight: 1.2,
+                  }}>
                     Comprar deste produtor
                   </h3>
-                  <p style={{
-                    fontFamily: "'Inter', sans-serif",
+                  <p className="mb-5" style={{
                     fontSize: "13.5px",
                     lineHeight: 1.55,
                     color: "rgba(26, 24, 20, 0.62)",
-                  }} className="mb-5">
+                  }}>
                     Fale direto com {displayFarmName || "o produtor"} sobre disponibilidade, lotes e distribuição.
                   </p>
                   <button onClick={() => { setPropForm({ message: "", volume: "", products: [] }); setShowProposal(true); }}
