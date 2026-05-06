@@ -4983,26 +4983,30 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
       {/* ── Content ── */}
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-8 space-y-10">
 
-        {/* Lot cards */}
-        {lotsWithPoly.length > 0 && (
-          <section>
-            <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 md:overflow-visible">
-              {lotsWithPoly.map(l => (
-                <div key={l.id} className="shrink-0 w-52 md:w-auto rounded-xl border border-white/10 bg-white/[0.025] p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="text-sm font-semibold text-text truncate">{l.name}</span>
-                    {l.area && Number(l.area) > 0 && (
-                      <span className="text-xs font-mono text-text/40 shrink-0">{Number(l.area).toLocaleString("pt-BR")} ha</span>
-                    )}
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-[11px] font-medium">
-                    <Sprout size={10} /> {l.crop}
-                  </span>
-                </div>
-              ))}
+        {/* Farm identity header */}
+        <div className="flex items-start gap-4 md:gap-5">
+          {displayLogo && (
+            <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden border border-white/15 bg-white/5 shrink-0 shadow-lg">
+              <LogoImg src={displayLogo} transform={displayLogoTransform} />
             </div>
-          </section>
-        )}
+          )}
+          <div className="flex-1 min-w-0 pt-1">
+            <h1 className="text-2xl md:text-3xl font-bold text-text leading-tight tracking-tight">
+              {displayFarmName || "Fazenda"}
+            </h1>
+            {displayLocation && (
+              <p className="text-sm text-text/55 mt-1 flex items-center gap-1.5">
+                <MapPin size={13} className="shrink-0" /> {displayLocation}
+                {totalArea > 0 && <span className="text-text/40"> · {totalArea.toLocaleString("pt-BR")} ha</span>}
+              </p>
+            )}
+            {displayDescription && (
+              <p className="mt-3 text-[15px] md:text-[16px] text-text/70 leading-relaxed whitespace-pre-line">
+                {displayDescription}
+              </p>
+            )}
+          </div>
+        </div>
 
         {/* Trust chips */}
         <div className="flex flex-wrap gap-2">
@@ -5024,11 +5028,27 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           ))}
         </div>
 
-        {/* About */}
-        {displayDescription && (
+        {/* Photo gallery */}
+        {allPhotos.length > 0 && (
           <section>
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">Sobre</h2>
-            <p className="text-[16px] md:text-[17px] text-text/75 leading-relaxed whitespace-pre-line">{displayDescription}</p>
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">
+              Fotos da fazenda <span className="text-text/25 font-normal normal-case tracking-normal ml-1">· {allPhotos.length}</span>
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {allPhotos.slice(0, 6).map((p, i) => (
+                <button key={i} onClick={() => setGalleryIdx(i)}
+                  className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-white/5">
+                  <img src={p.src} alt={p.lotName} loading="lazy" decoding="async"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    style={p.transform ? { transform: `translate(${p.transform.x}px,${p.transform.y}px) scale(${p.transform.scale})`, transformOrigin: "center" } : undefined} />
+                  {i === 5 && allPhotos.length > 6 && (
+                    <div className="absolute inset-0 bg-black/55 flex items-center justify-center rounded-xl">
+                      <span className="text-white text-sm font-semibold">+{allPhotos.length - 6}</span>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
           </section>
         )}
 
@@ -5041,6 +5061,28 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
                 <div key={i} className="flex items-center gap-2 px-3.5 py-2 rounded-lg border border-white/10 bg-white/[0.02]">
                   <Sprout size={13} className="text-accent" />
                   <span className="text-sm font-medium text-text">{p}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Lot cards */}
+        {lotsWithPoly.length > 0 && (
+          <section>
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">Lotes mapeados</h2>
+            <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 md:overflow-visible">
+              {lotsWithPoly.map(l => (
+                <div key={l.id} className="shrink-0 w-52 md:w-auto rounded-xl border border-white/10 bg-white/[0.025] p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className="text-sm font-semibold text-text truncate">{l.name}</span>
+                    {l.area && Number(l.area) > 0 && (
+                      <span className="text-xs font-mono text-text/40 shrink-0">{Number(l.area).toLocaleString("pt-BR")} ha</span>
+                    )}
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-[11px] font-medium">
+                    <Sprout size={10} /> {l.crop}
+                  </span>
                 </div>
               ))}
             </div>
