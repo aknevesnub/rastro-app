@@ -2801,7 +2801,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
           </div>
 
           {/* Linha 2: chips de bioma + cultura (scroll horizontal) */}
-          <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-0.5" style={{ scrollbarWidth: "none" }}>
+          <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-5 px-5 md:-mx-8 md:px-8" style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}>
             {Object.entries(BIOME_CONFIG).map(([key, cfg]) => {
               const active = selectedBiome === key;
               return (
