@@ -2800,8 +2800,8 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
             </button>
           </div>
         </div>
-        {/* Chips row — overflow-x: scroll + inline-flex garante scroll em todos os browsers */}
-        <div className="bg-bg/95" style={{ overflowX: "scroll", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
+        {/* Chips row — touch-action:pan-x é obrigatório para scroll por toque no iOS Safari dentro de sticky */}
+        <div className="bg-bg/95" style={{ overflowX: "scroll", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", touchAction: "pan-x", overscrollBehaviorX: "contain", transform: "translateZ(0)" } as React.CSSProperties}>
           <div style={{ display: "inline-flex", gap: "8px", paddingLeft: "20px", paddingRight: "20px", paddingBottom: "12px" }}>
             {Object.entries(BIOME_CONFIG).map(([key, cfg]) => {
               const active = selectedBiome === key;
