@@ -2486,11 +2486,14 @@ const DEMO_FULL_DATA: Record<string, DemoFarmData> = {
     },
     lots: [
       { id: "dl-sc-1", userId: "demo-santa-clara", name: "Talhão Norte — Soja", crop: "Soja", area: 520, status: "ativo", eudrCompliant: true, harvestDate: "2025-02-15",
-        geoPolygon: [{ lat: -12.500, lng: -55.760 }, { lat: -12.500, lng: -55.700 }, { lat: -12.545, lng: -55.700 }, { lat: -12.545, lng: -55.760 }] },
+        geoPolygon: [{ lat: -12.498, lng: -55.763 }, { lat: -12.501, lng: -55.718 }, { lat: -12.509, lng: -55.706 }, { lat: -12.543, lng: -55.698 }, { lat: -12.547, lng: -55.741 }, { lat: -12.535, lng: -55.763 }],
+        photos: [{ id: "ph-sc-1a", lotId: "dl-sc-1", position: 0, url: "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&w=800&q=80" }, { id: "ph-sc-1b", lotId: "dl-sc-1", position: 1, url: "https://images.unsplash.com/photo-1500595046743-cd271d694d30?auto=format&fit=crop&w=800&q=80" }] },
       { id: "dl-sc-2", userId: "demo-santa-clara", name: "Talhão Sul — Milho Safrinha", crop: "Milho", area: 380, status: "ativo", eudrCompliant: true, harvestDate: "2025-06-20",
-        geoPolygon: [{ lat: -12.555, lng: -55.745 }, { lat: -12.555, lng: -55.695 }, { lat: -12.590, lng: -55.695 }, { lat: -12.590, lng: -55.745 }] },
+        geoPolygon: [{ lat: -12.556, lng: -55.748 }, { lat: -12.552, lng: -55.712 }, { lat: -12.558, lng: -55.698 }, { lat: -12.591, lng: -55.700 }, { lat: -12.594, lng: -55.738 }, { lat: -12.580, lng: -55.750 }],
+        photos: [{ id: "ph-sc-2a", lotId: "dl-sc-2", position: 0, url: "https://images.unsplash.com/photo-1464226184884-fa280b87c399?auto=format&fit=crop&w=800&q=80" }] },
       { id: "dl-sc-3", userId: "demo-santa-clara", name: "Talhão Leste — Soja", crop: "Soja", area: 340, status: "ativo", eudrCompliant: true, harvestDate: "2025-02-28",
-        geoPolygon: [{ lat: -12.510, lng: -55.690 }, { lat: -12.510, lng: -55.650 }, { lat: -12.550, lng: -55.650 }, { lat: -12.550, lng: -55.690 }] },
+        geoPolygon: [{ lat: -12.512, lng: -55.692 }, { lat: -12.508, lng: -55.668 }, { lat: -12.514, lng: -55.652 }, { lat: -12.548, lng: -55.648 }, { lat: -12.552, lng: -55.672 }, { lat: -12.546, lng: -55.692 }],
+        photos: [{ id: "ph-sc-3a", lotId: "dl-sc-3", position: 0, url: "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=800&q=80" }] },
     ],
   },
 
@@ -2517,9 +2520,11 @@ const DEMO_FULL_DATA: Record<string, DemoFarmData> = {
     },
     lots: [
       { id: "dl-sv-1", userId: "demo-cafeicultura", name: "Bloco A — Arábica Especial", crop: "Café", area: 140, status: "ativo", eudrCompliant: true, harvestDate: "2025-07-10",
-        geoPolygon: [{ lat: -18.920, lng: -47.010 }, { lat: -18.920, lng: -46.970 }, { lat: -18.950, lng: -46.970 }, { lat: -18.950, lng: -47.010 }] },
+        geoPolygon: [{ lat: -18.918, lng: -47.013 }, { lat: -18.922, lng: -46.978 }, { lat: -18.930, lng: -46.968 }, { lat: -18.949, lng: -46.972 }, { lat: -18.951, lng: -47.006 }, { lat: -18.938, lng: -47.014 }],
+        photos: [{ id: "ph-sv-1a", lotId: "dl-sv-1", position: 0, url: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=800&q=80" }, { id: "ph-sv-1b", lotId: "dl-sv-1", position: 1, url: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80" }, { id: "ph-sv-1c", lotId: "dl-sv-1", position: 2, url: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=80" }] },
       { id: "dl-sv-2", userId: "demo-cafeicultura", name: "Bloco B — Café Natural", crop: "Café", area: 120, status: "ativo", eudrCompliant: true, harvestDate: "2025-07-25",
-        geoPolygon: [{ lat: -18.955, lng: -47.005 }, { lat: -18.955, lng: -46.965 }, { lat: -18.975, lng: -46.965 }, { lat: -18.975, lng: -47.005 }] },
+        geoPolygon: [{ lat: -18.954, lng: -47.008 }, { lat: -18.956, lng: -46.974 }, { lat: -18.963, lng: -46.963 }, { lat: -18.976, lng: -46.968 }, { lat: -18.978, lng: -47.002 }, { lat: -18.966, lng: -47.010 }],
+        photos: [{ id: "ph-sv-2a", lotId: "dl-sv-2", position: 0, url: "https://images.unsplash.com/photo-1611854779393-1b2da9d400fe?auto=format&fit=crop&w=800&q=80" }] },
     ],
   },
 
@@ -2547,11 +2552,14 @@ const DEMO_FULL_DATA: Record<string, DemoFarmData> = {
     },
     lots: [
       { id: "dl-pv-1", userId: "demo-pantanal", name: "Invernada Norte", crop: "Pecuária", area: 1800, status: "ativo", eudrCompliant: true,
-        geoPolygon: [{ lat: -18.940, lng: -57.700 }, { lat: -18.940, lng: -57.610 }, { lat: -19.010, lng: -57.610 }, { lat: -19.010, lng: -57.700 }] },
+        geoPolygon: [{ lat: -18.938, lng: -57.702 }, { lat: -18.935, lng: -57.648 }, { lat: -18.943, lng: -57.614 }, { lat: -19.008, lng: -57.609 }, { lat: -19.014, lng: -57.658 }, { lat: -19.005, lng: -57.702 }],
+        photos: [{ id: "ph-pv-1a", lotId: "dl-pv-1", position: 0, url: "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=800&q=80" }, { id: "ph-pv-1b", lotId: "dl-pv-1", position: 1, url: "https://images.unsplash.com/photo-1469854523086-cc44e0196b73?auto=format&fit=crop&w=800&q=80" }] },
       { id: "dl-pv-2", userId: "demo-pantanal", name: "Invernada Sul — Cria", crop: "Pecuária", area: 2100, status: "ativo", eudrCompliant: true,
-        geoPolygon: [{ lat: -19.020, lng: -57.720 }, { lat: -19.020, lng: -57.630 }, { lat: -19.090, lng: -57.630 }, { lat: -19.090, lng: -57.720 }] },
+        geoPolygon: [{ lat: -19.018, lng: -57.724 }, { lat: -19.021, lng: -57.668 }, { lat: -19.015, lng: -57.632 }, { lat: -19.092, lng: -57.628 }, { lat: -19.095, lng: -57.682 }, { lat: -19.088, lng: -57.722 }],
+        photos: [{ id: "ph-pv-2a", lotId: "dl-pv-2", position: 0, url: "https://images.unsplash.com/photo-1500267005500-23f2e2bef7f1?auto=format&fit=crop&w=800&q=80" }] },
       { id: "dl-pv-3", userId: "demo-pantanal", name: "Retiro do Rio — Engorda", crop: "Pecuária", area: 1500, status: "ativo", eudrCompliant: true,
-        geoPolygon: [{ lat: -19.000, lng: -57.600 }, { lat: -19.000, lng: -57.545 }, { lat: -19.055, lng: -57.545 }, { lat: -19.055, lng: -57.600 }] },
+        geoPolygon: [{ lat: -18.998, lng: -57.602 }, { lat: -18.995, lng: -57.562 }, { lat: -19.004, lng: -57.548 }, { lat: -19.058, lng: -57.544 }, { lat: -19.061, lng: -57.578 }, { lat: -19.050, lng: -57.603 }],
+        photos: [{ id: "ph-pv-3a", lotId: "dl-pv-3", position: 0, url: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&w=800&q=80" }] },
     ],
   },
 
@@ -2579,11 +2587,14 @@ const DEMO_FULL_DATA: Record<string, DemoFarmData> = {
     },
     lots: [
       { id: "dl-av-1", userId: "demo-amazonica", name: "Cabruca Norte — Cacau", crop: "Cacau", area: 280, status: "ativo", eudrCompliant: true, harvestDate: "2025-09-15",
-        geoPolygon: [{ lat: -2.410, lng: -54.730 }, { lat: -2.410, lng: -54.690 }, { lat: -2.445, lng: -54.690 }, { lat: -2.445, lng: -54.730 }] },
+        geoPolygon: [{ lat: -2.408, lng: -54.733 }, { lat: -2.412, lng: -54.700 }, { lat: -2.418, lng: -54.688 }, { lat: -2.446, lng: -54.692 }, { lat: -2.448, lng: -54.722 }, { lat: -2.435, lng: -54.734 }],
+        photos: [{ id: "ph-av-1a", lotId: "dl-av-1", position: 0, url: "https://images.unsplash.com/photo-1606914469633-bd37a2fc0f95?auto=format&fit=crop&w=800&q=80" }, { id: "ph-av-1b", lotId: "dl-av-1", position: 1, url: "https://images.unsplash.com/photo-1605027990121-cbae9e0642df?auto=format&fit=crop&w=800&q=80" }] },
       { id: "dl-av-2", userId: "demo-amazonica", name: "Várzea do Tapajós — Açaí", crop: "Açaí", area: 180, status: "ativo", eudrCompliant: true, harvestDate: "2025-11-01",
-        geoPolygon: [{ lat: -2.450, lng: -54.725 }, { lat: -2.450, lng: -54.685 }, { lat: -2.475, lng: -54.685 }, { lat: -2.475, lng: -54.725 }] },
+        geoPolygon: [{ lat: -2.448, lng: -54.728 }, { lat: -2.452, lng: -54.698 }, { lat: -2.458, lng: -54.684 }, { lat: -2.476, lng: -54.688 }, { lat: -2.478, lng: -54.716 }, { lat: -2.464, lng: -54.730 }],
+        photos: [{ id: "ph-av-2a", lotId: "dl-av-2", position: 0, url: "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=800&q=80" }] },
       { id: "dl-av-3", userId: "demo-amazonica", name: "Castanhal do Igarapé", crop: "Castanha", area: 490, status: "ativo", eudrCompliant: true,
-        geoPolygon: [{ lat: -2.400, lng: -54.760 }, { lat: -2.400, lng: -54.730 }, { lat: -2.440, lng: -54.730 }, { lat: -2.440, lng: -54.760 }] },
+        geoPolygon: [{ lat: -2.398, lng: -54.762 }, { lat: -2.402, lng: -54.738 }, { lat: -2.408, lng: -54.730 }, { lat: -2.441, lng: -54.728 }, { lat: -2.443, lng: -54.752 }, { lat: -2.428, lng: -54.763 }],
+        photos: [{ id: "ph-av-3a", lotId: "dl-av-3", position: 0, url: "https://images.unsplash.com/photo-1580822184713-fc5400e7fe10?auto=format&fit=crop&w=800&q=80" }, { id: "ph-av-3b", lotId: "dl-av-3", position: 1, url: "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=800&q=80" }] },
     ],
   },
 };
@@ -4943,11 +4954,16 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const isComprador = !!user && user.role && user.role !== "produtor";
   const canSendProposal = isViewingOther && isComprador;
 
-  // Aggregate all lot photos for the gallery (logged-in user only — backend lots type differs)
+  // Aggregate lot photos — dono vê suas próprias fotos; fazendas demo também expõem fotos
   const allPhotos = isViewingOther
-    ? []
+    ? (viewingFarmId?.startsWith("demo-")
+        ? viewedLots.flatMap(l =>
+            ((l.photos as import("./services/api").ApiLotPhoto[] | undefined) ?? [])
+              .map(p => ({ src: p.url, lotName: l.name, crop: l.crop, transform: p.transform }))
+          )
+        : [])
     : lots.flatMap(l =>
-        (l.photos || []).map((src, pi) => ({ src, lotName: l.name, crop: l.crop, transform: l.photoTransforms?.[pi] }))
+        (l.photos || []).map((src: string, pi: number) => ({ src, lotName: l.name, crop: l.crop, transform: l.photoTransforms?.[pi] }))
       );
 
   // Teclas: ESC fecha lightbox; setas navegam entre fotos
@@ -5029,17 +5045,18 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
     geoPolygon?: { lat: number; lng: number }[];
     mapPoints?: [number, number][];
   };
-  const lotsWithPoly: { id: string; name: string; crop: string; area?: number | string; points: [number, number][] }[] =
+  const lotsWithPoly: { id: string; name: string; crop: string; area?: number | string; points: [number, number][]; photoUrl?: string }[] =
     (displayLots as AnyLot[])
       .map(l => {
         const polyPoints: [number, number][] = (l.geoPolygon ?? []).map(g => [g.lat, g.lng]);
         const localPoints: [number, number][] = (l.mapPoints ?? []) as [number, number][];
         const points = polyPoints.length ? polyPoints : localPoints;
+        const firstPhoto = (l.photos as import("./services/api").ApiLotPhoto[] | undefined)?.[0];
         return points.length >= 3
-          ? { id: String(l.id), name: l.name, crop: l.crop, area: l.area, points }
+          ? { id: String(l.id), name: l.name, crop: l.crop, area: l.area, points, photoUrl: firstPhoto?.url }
           : null;
       })
-      .filter((x): x is { id: string; name: string; crop: string; area?: number | string; points: [number, number][] } => !!x);
+      .filter((x): x is { id: string; name: string; crop: string; area?: number | string; points: [number, number][]; photoUrl?: string } => !!x);
 
   // ── Skeleton de carregamento (só quando não há cache — ex: acesso direto por URL) ──
   if (isViewingOther && loadingLots && !viewedFarm) {
@@ -5300,16 +5317,24 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-text/40 mb-3">Lotes mapeados</h2>
             <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-3 md:overflow-visible">
               {lotsWithPoly.map(l => (
-                <div key={l.id} className="shrink-0 w-52 md:w-auto rounded-xl border border-white/10 bg-white/[0.025] p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="text-sm font-semibold text-text truncate">{l.name}</span>
-                    {l.area && Number(l.area) > 0 && (
-                      <span className="text-xs font-mono text-text/40 shrink-0">{Number(l.area).toLocaleString("pt-BR")} ha</span>
-                    )}
+                <div key={l.id} className="shrink-0 w-56 md:w-auto rounded-xl border border-white/10 bg-white/[0.025] overflow-hidden">
+                  {l.photoUrl && (
+                    <div className="w-full h-32 overflow-hidden">
+                      <img src={l.photoUrl} alt={l.name} loading="lazy" decoding="async"
+                        className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="text-sm font-semibold text-text truncate">{l.name}</span>
+                      {l.area && Number(l.area) > 0 && (
+                        <span className="text-xs font-mono text-text/40 shrink-0">{Number(l.area).toLocaleString("pt-BR")} ha</span>
+                      )}
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-[11px] font-medium">
+                      <Sprout size={10} /> {l.crop}
+                    </span>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-[11px] font-medium">
-                    <Sprout size={10} /> {l.crop}
-                  </span>
                 </div>
               ))}
             </div>
