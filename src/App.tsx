@@ -2450,6 +2450,144 @@ const DEMO_FARMS = [
   { farmName: "Fazenda Horizonte Novo", name: "Marcos Souza", location: "Lucas do Rio Verde, MT", description: "Produção de algodão e cana com tecnologia de precisão e rastreabilidade digital.", products: ["Algodão", "Cana"], certs: ["EUDR Conforme", "RTRS"], lots: 3, area: 870 },
 ];
 
+// ─── Perfis de demonstração completos ────────────────────────────────────────
+// Servem de exemplo visual para produtores entenderem o potencial da plataforma.
+
+const _svgLogo = (bg: string, initials: string) =>
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="20" fill="${bg}"/><text x="60" y="80" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-weight="800" font-size="44" fill="white">${initials}</text></svg>`)}`;
+
+type DemoFarmData = {
+  farm: import("./services/api").ApiUser;
+  lots: import("./services/api").ApiLot[];
+};
+
+const DEMO_FULL_DATA: Record<string, DemoFarmData> = {
+  "demo-santa-clara": {
+    farm: {
+      id: "demo-santa-clara", email: "",
+      farmName: "Fazenda Santa Clara",
+      name: "João Carlos Ferreira",
+      phone: "(66) 99812-4431",
+      location: "Sorriso, MT",
+      area: 1240,
+      profileMode: "commodity",
+      description: "Três gerações cultivando soja e milho no coração do Cerrado mato-grossense. A Santa Clara foi fundada em 1984 por Seu José Ferreira, que chegou ao Mato Grosso com uma motoserra e um sonho. Hoje, com tecnologia de precisão, plantio direto e certificação EUDR, a família Ferreira exporta rastreabilidade junto com cada saca de soja — origem verificada talhão a talhão.",
+      logoUrl: _svgLogo("#1a6b3a", "SC"),
+      coverUrl: "https://images.unsplash.com/photo-1500595046743-cd271d694d30?auto=format&fit=crop&w=1200&q=80",
+      products: [{ id: "1", name: "Soja" }, { id: "2", name: "Milho" }],
+      certs: [{ id: "1", name: "EUDR ✓" }, { id: "2", name: "Orgânico IBD" }, { id: "3", name: "RTRS" }],
+      practices: [
+        { id: "p1", category: "solo", key: "plantio_direto", name: "Plantio Direto", active: true, startDate: "2010-03-01" },
+        { id: "p2", category: "biodiversidade", key: "reserva_legal", name: "Reserva Legal 30%", active: true, startDate: "2015-01-01" },
+        { id: "p3", category: "agua", key: "monitoramento_hidrico", name: "Monitoramento Hídrico", active: true, startDate: "2019-06-01" },
+        { id: "p4", category: "insumos", key: "agricultura_precisao", name: "Agricultura de Precisão", active: true, startDate: "2018-01-01" },
+        { id: "p5", category: "solo", key: "rotacao_culturas", name: "Rotação de Culturas", active: true, startDate: "2012-07-01" },
+      ],
+    },
+    lots: [
+      { id: "dl-sc-1", userId: "demo-santa-clara", name: "Talhão Norte — Soja", crop: "Soja", area: 520, status: "ativo", eudrCompliant: true, harvestDate: "2025-02-15",
+        geoPolygon: [{ lat: -12.500, lng: -55.760 }, { lat: -12.500, lng: -55.700 }, { lat: -12.545, lng: -55.700 }, { lat: -12.545, lng: -55.760 }] },
+      { id: "dl-sc-2", userId: "demo-santa-clara", name: "Talhão Sul — Milho Safrinha", crop: "Milho", area: 380, status: "ativo", eudrCompliant: true, harvestDate: "2025-06-20",
+        geoPolygon: [{ lat: -12.555, lng: -55.745 }, { lat: -12.555, lng: -55.695 }, { lat: -12.590, lng: -55.695 }, { lat: -12.590, lng: -55.745 }] },
+      { id: "dl-sc-3", userId: "demo-santa-clara", name: "Talhão Leste — Soja", crop: "Soja", area: 340, status: "ativo", eudrCompliant: true, harvestDate: "2025-02-28",
+        geoPolygon: [{ lat: -12.510, lng: -55.690 }, { lat: -12.510, lng: -55.650 }, { lat: -12.550, lng: -55.650 }, { lat: -12.550, lng: -55.690 }] },
+    ],
+  },
+
+  "demo-cafeicultura": {
+    farm: {
+      id: "demo-cafeicultura", email: "",
+      farmName: "Cafeicultura Serra Verde",
+      name: "Ana Lima",
+      phone: "(34) 98834-2210",
+      location: "Patrocínio, MG",
+      area: 380,
+      profileMode: "produto",
+      description: "Café especial arábica cultivado a 1.100 metros de altitude nos cafezais do Alto Paranaíba. A Ana Lima herdou a Serra Verde do pai e transformou a produção familiar em referência de café de origem único. Cada lote rastreado do pé à xícara, com certificação Rainforest Alliance e EUDR. Exporta direto para torrefadores especializados na Alemanha, Suécia e Japão.",
+      logoUrl: _svgLogo("#6b3a1a", "SV"),
+      coverUrl: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=1200&q=80",
+      products: [{ id: "1", name: "Café Arábica" }, { id: "2", name: "Café Especial" }],
+      certs: [{ id: "1", name: "EUDR ✓" }, { id: "2", name: "Rainforest Alliance" }, { id: "3", name: "UTZ Certified" }],
+      practices: [
+        { id: "p1", category: "solo", key: "adubacao_organica", name: "Adubação Orgânica", active: true, startDate: "2014-04-01" },
+        { id: "p2", category: "biodiversidade", key: "cafe_sombra", name: "Café à Sombra (SAF)", active: true, startDate: "2016-09-01" },
+        { id: "p3", category: "agua", key: "reuso_agua", name: "Reúso de Água no Beneficiamento", active: true, startDate: "2020-01-01" },
+        { id: "p4", category: "residuos", key: "compostagem", name: "Compostagem da Casca", active: true, startDate: "2017-03-01" },
+      ],
+    },
+    lots: [
+      { id: "dl-sv-1", userId: "demo-cafeicultura", name: "Bloco A — Arábica Especial", crop: "Café", area: 140, status: "ativo", eudrCompliant: true, harvestDate: "2025-07-10",
+        geoPolygon: [{ lat: -18.920, lng: -47.010 }, { lat: -18.920, lng: -46.970 }, { lat: -18.950, lng: -46.970 }, { lat: -18.950, lng: -47.010 }] },
+      { id: "dl-sv-2", userId: "demo-cafeicultura", name: "Bloco B — Café Natural", crop: "Café", area: 120, status: "ativo", eudrCompliant: true, harvestDate: "2025-07-25",
+        geoPolygon: [{ lat: -18.955, lng: -47.005 }, { lat: -18.955, lng: -46.965 }, { lat: -18.975, lng: -46.965 }, { lat: -18.975, lng: -47.005 }] },
+    ],
+  },
+
+  "demo-pantanal": {
+    farm: {
+      id: "demo-pantanal", email: "",
+      farmName: "Fazenda Pantanal Vivo",
+      name: "Ana Beatriz Costa",
+      phone: "(67) 99901-7733",
+      location: "Corumbá, MS",
+      area: 5400,
+      profileMode: "commodity",
+      description: "Pecuária extensiva no coração do Pantanal sul-mato-grossense, o maior wetland tropical do planeta. A Fazenda Pantanal Vivo é referência em manejo sustentável: rastreabilidade brinco a brinco, controle de desmatamento zero desde 2008 e monitoramento de onças-pintadas em parceria com o Instituto Onça-Pintada. Carne rastreada com destino ao mercado europeu.",
+      logoUrl: _svgLogo("#0e5f6e", "PV"),
+      coverUrl: "https://images.unsplash.com/photo-1469854523086-cc44e0196b73?auto=format&fit=crop&w=1200&q=80",
+      products: [{ id: "1", name: "Pecuária Bovina" }],
+      certs: [{ id: "1", name: "EUDR ✓" }, { id: "2", name: "Boi Verde" }, { id: "3", name: "PRODES/INPE ✓" }],
+      practices: [
+        { id: "p1", category: "pecuaria", key: "rastreabilidade_individual", name: "Rastreabilidade Individual (SISBOV)", active: true, startDate: "2008-01-01" },
+        { id: "p2", category: "biodiversidade", key: "monitoramento_fauna", name: "Monitoramento de Fauna", active: true, startDate: "2015-05-01" },
+        { id: "p3", category: "agua", key: "protecao_nascentes", name: "Proteção de Nascentes", active: true, startDate: "2010-01-01" },
+        { id: "p4", category: "pecuaria", key: "manejo_rotativo", name: "Manejo Rotativo de Pastagens", active: true, startDate: "2012-03-01" },
+        { id: "p5", category: "biodiversidade", key: "desmatamento_zero", name: "Desmatamento Zero (desde 2008)", active: true, startDate: "2008-06-01" },
+      ],
+    },
+    lots: [
+      { id: "dl-pv-1", userId: "demo-pantanal", name: "Invernada Norte", crop: "Pecuária", area: 1800, status: "ativo", eudrCompliant: true,
+        geoPolygon: [{ lat: -18.940, lng: -57.700 }, { lat: -18.940, lng: -57.610 }, { lat: -19.010, lng: -57.610 }, { lat: -19.010, lng: -57.700 }] },
+      { id: "dl-pv-2", userId: "demo-pantanal", name: "Invernada Sul — Cria", crop: "Pecuária", area: 2100, status: "ativo", eudrCompliant: true,
+        geoPolygon: [{ lat: -19.020, lng: -57.720 }, { lat: -19.020, lng: -57.630 }, { lat: -19.090, lng: -57.630 }, { lat: -19.090, lng: -57.720 }] },
+      { id: "dl-pv-3", userId: "demo-pantanal", name: "Retiro do Rio — Engorda", crop: "Pecuária", area: 1500, status: "ativo", eudrCompliant: true,
+        geoPolygon: [{ lat: -19.000, lng: -57.600 }, { lat: -19.000, lng: -57.545 }, { lat: -19.055, lng: -57.545 }, { lat: -19.055, lng: -57.600 }] },
+    ],
+  },
+
+  "demo-amazonica": {
+    farm: {
+      id: "demo-amazonica", email: "",
+      farmName: "Fazenda Amazônica Verde",
+      name: "Pedro Santos",
+      phone: "(93) 99644-8820",
+      location: "Santarém, PA",
+      area: 950,
+      profileMode: "produto",
+      description: "Cacau e açaí nativos no coração da Amazônia paraense, com manejo agroflorestal que preserva a floresta primária. O Pedro Santos é 3ª geração de agricultores ribeirinhos que transformaram extrativismo em produção premium certificada. Chocolate belga, japonês e brasileiro compra a amêndoa da Amazônica Verde. Origem verificada por satélite, PRODES/INPE e vistoria presencial.",
+      logoUrl: _svgLogo("#1a5e1a", "AV"),
+      coverUrl: "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=1200&q=80",
+      products: [{ id: "1", name: "Cacau" }, { id: "2", name: "Açaí" }, { id: "3", name: "Castanha" }],
+      certs: [{ id: "1", name: "EUDR ✓" }, { id: "2", name: "Orgânico IBD" }, { id: "3", name: "PRODES/INPE ✓" }, { id: "4", name: "Rainforest Alliance" }],
+      practices: [
+        { id: "p1", category: "biodiversidade", key: "agrofloresta", name: "Sistema Agroflorestal (SAF)", active: true, startDate: "2005-01-01" },
+        { id: "p2", category: "biodiversidade", key: "desmatamento_zero", name: "Desmatamento Zero", active: true, startDate: "2005-01-01" },
+        { id: "p3", category: "solo", key: "adubacao_organica", name: "Adubação Orgânica", active: true, startDate: "2008-04-01" },
+        { id: "p4", category: "agua", key: "protecao_nascentes", name: "Proteção de Igarapés", active: true, startDate: "2010-07-01" },
+        { id: "p5", category: "residuos", key: "compostagem", name: "Compostagem de Resíduos", active: true, startDate: "2015-02-01" },
+      ],
+    },
+    lots: [
+      { id: "dl-av-1", userId: "demo-amazonica", name: "Cabruca Norte — Cacau", crop: "Cacau", area: 280, status: "ativo", eudrCompliant: true, harvestDate: "2025-09-15",
+        geoPolygon: [{ lat: -2.410, lng: -54.730 }, { lat: -2.410, lng: -54.690 }, { lat: -2.445, lng: -54.690 }, { lat: -2.445, lng: -54.730 }] },
+      { id: "dl-av-2", userId: "demo-amazonica", name: "Várzea do Tapajós — Açaí", crop: "Açaí", area: 180, status: "ativo", eudrCompliant: true, harvestDate: "2025-11-01",
+        geoPolygon: [{ lat: -2.450, lng: -54.725 }, { lat: -2.450, lng: -54.685 }, { lat: -2.475, lng: -54.685 }, { lat: -2.475, lng: -54.725 }] },
+      { id: "dl-av-3", userId: "demo-amazonica", name: "Castanhal do Igarapé", crop: "Castanha", area: 490, status: "ativo", eudrCompliant: true,
+        geoPolygon: [{ lat: -2.400, lng: -54.760 }, { lat: -2.400, lng: -54.730 }, { lat: -2.440, lng: -54.730 }, { lat: -2.440, lng: -54.760 }] },
+    ],
+  },
+};
+
 // ─── Vitrine de Fazendas ─────────────────────────────────────────────────────
 
 const BIOME_CONFIG: Record<string, { label: string; color: string; center: [number, number]; zoom: number; emoji: string }> = {
@@ -2471,15 +2609,17 @@ type VitrineEntry = {
 };
 
 const VITRINE_DEMO: VitrineEntry[] = [
-  { farmName: "Fazenda Santa Clara",      name: "João Carlos Ferreira", location: "Sorriso, MT",           biome: "cerrado",        lat: -12.55, lng: -55.72, products: ["Soja", "Milho"],     certs: ["EUDR ✓", "Orgânico"],             lots: 4, area: 1240, description: "Três gerações cultivando soja e milho com práticas sustentáveis e certificação EUDR." },
-  { farmName: "Cafeicultura Serra Verde",  name: "Ana Lima",             location: "Patrocínio, MG",        biome: "cerrado",        lat: -18.94, lng: -46.99, products: ["Café"],             certs: ["EUDR ✓", "Rainforest Alliance"],   lots: 2, area: 380,  description: "Café especial arábica cultivado em altitude com rastreabilidade total do grão à xícara.", profileMode: "produto" },
+  // ── Fazendas com perfil completo (navegam para página de exemplo) ──
+  { id: "demo-santa-clara",   farmName: "Fazenda Santa Clara",     name: "João Carlos Ferreira", location: "Sorriso, MT",           biome: "cerrado",        lat: -12.55, lng: -55.72, products: ["Soja", "Milho"],     certs: ["EUDR ✓", "Orgânico IBD", "RTRS"],       lots: 3, area: 1240, description: "Três gerações cultivando soja e milho com práticas sustentáveis e certificação EUDR.", logo: _svgLogo("#1a6b3a","SC"), cover: "https://images.unsplash.com/photo-1500595046743-cd271d694d30?auto=format&fit=crop&w=800&q=80", isReal: true },
+  { id: "demo-cafeicultura",  farmName: "Cafeicultura Serra Verde", name: "Ana Lima",             location: "Patrocínio, MG",        biome: "cerrado",        lat: -18.94, lng: -46.99, products: ["Café Arábica"],      certs: ["EUDR ✓", "Rainforest Alliance"],         lots: 2, area: 380,  description: "Café especial arábica cultivado em altitude com rastreabilidade total do grão à xícara.", logo: _svgLogo("#6b3a1a","SV"), cover: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&w=800&q=80", isReal: true, profileMode: "produto" },
+  { id: "demo-pantanal",      farmName: "Fazenda Pantanal Vivo",   name: "Ana Beatriz Costa",    location: "Corumbá, MS",           biome: "pantanal",       lat: -18.99, lng: -57.65, products: ["Pecuária Bovina"],   certs: ["EUDR ✓", "Boi Verde", "PRODES/INPE ✓"], lots: 3, area: 5400, description: "Pecuária pantaneira com rastreabilidade brinco a brinco e desmatamento zero desde 2008.", logo: _svgLogo("#0e5f6e","PV"), cover: "https://images.unsplash.com/photo-1469854523086-cc44e0196b73?auto=format&fit=crop&w=800&q=80", isReal: true },
+  { id: "demo-amazonica",     farmName: "Fazenda Amazônica Verde",  name: "Pedro Santos",         location: "Santarém, PA",          biome: "amazônia",       lat: -2.44,  lng: -54.70, products: ["Cacau", "Açaí"],     certs: ["EUDR ✓", "Orgânico IBD", "Rainforest Alliance"], lots: 3, area: 950, description: "Cacau e açaí nativos com manejo agroflorestal que preserva floresta primária amazônica.", logo: _svgLogo("#1a5e1a","AV"), cover: "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=800&q=80", isReal: true, profileMode: "produto" },
+  // ── Outras fazendas (somente cartão no mapa) ──
   { farmName: "Agropecuária Cerrado",     name: "Roberto Alves",        location: "Barreiras, BA",         biome: "cerrado",        lat: -12.15, lng: -44.98, products: ["Pecuária", "Soja"], certs: ["EUDR ✓"],                          lots: 6, area: 3200, description: "Pecuária extensiva e soja com mapeamento completo e verificação PRODES/INPE." },
   { farmName: "Fazenda Horizonte Novo",   name: "Marcos Souza",         location: "Lucas do Rio Verde, MT",biome: "cerrado",        lat: -13.05, lng: -55.90, products: ["Algodão", "Cana"],  certs: ["EUDR ✓", "RTRS"],                  lots: 3, area: 870,  description: "Produção de algodão e cana com tecnologia de precisão e rastreabilidade digital." },
-  { farmName: "Fazenda Amazônica Verde",  name: "Pedro Santos",         location: "Santarém, PA",          biome: "amazônia",       lat: -2.44,  lng: -54.70, products: ["Cacau", "Açaí"],   certs: ["EUDR ✓", "Orgânico"],              lots: 5, area: 950,  description: "Cacau e açaí nativos com manejo sustentável da floresta e certificação orgânica." },
   { farmName: "Fazenda Rio Negro",        name: "Joana Tapajós",        location: "Manaus, AM",            biome: "amazônia",       lat: -3.13,  lng: -60.02, products: ["Castanha", "Açaí"], certs: ["EUDR ✓"],                          lots: 3, area: 1800, description: "Extrativismo sustentável com castanha-do-pará e açaí preservando o ecossistema amazônico." },
   { farmName: "Sítio Caatinga Forte",    name: "Maria Oliveira",        location: "Petrolina, PE",         biome: "caatinga",       lat: -9.38,  lng: -40.50, products: ["Manga", "Uva"],    certs: ["EUDR ✓"],                          lots: 2, area: 180,  description: "Fruticultura irrigada no Vale do São Francisco com exportação certificada para a Europa." },
   { farmName: "Estância Pampa Real",     name: "Carlos Gaúcho",         location: "Bagé, RS",              biome: "pampa",          lat: -31.33, lng: -54.10, products: ["Pecuária", "Arroz"], certs: ["EUDR ✓"],                        lots: 4, area: 2100, description: "Pecuária extensiva do Pampa gaúcho com rastreabilidade individual brinco a prato." },
-  { farmName: "Fazenda Pantanal Vivo",   name: "Ana Beatriz Costa",     location: "Corumbá, MS",           biome: "pantanal",       lat: -18.99, lng: -57.65, products: ["Pecuária"],        certs: ["EUDR ✓"],                          lots: 3, area: 5400, description: "Pecuária pantaneira com práticas de conservação do maior wetland tropical do mundo." },
   { farmName: "Fazenda Mata Verde",      name: "Lucas Morais",           location: "Ilhéus, BA",            biome: "mata atlântica", lat: -14.79, lng: -39.04, products: ["Cacau", "Café"],   certs: ["EUDR ✓", "Rainforest Alliance"],   lots: 2, area: 420,  description: "Cacau e café à sombra da Mata Atlântica baiana com certificação internacional.", profileMode: "produto" },
   { farmName: "Sítio Serra Gaúcha",      name: "Pietro Bortolini",      location: "Bento Gonçalves, RS",   biome: "mata atlântica", lat: -29.17, lng: -51.52, products: ["Uva", "Vinho"],    certs: ["EUDR ✓"],                          lots: 2, area: 65,   description: "Viticultura de altitude na Serra Gaúcha produzindo uvas finas para vinhos premiados.", profileMode: "produto" },
   { farmName: "Fazenda Cerrado Norte",   name: "Renata Melo",            location: "Brasília, DF",          biome: "cerrado",        lat: -15.77, lng: -47.92, products: ["Milho", "Soja"],   certs: ["EUDR ✓"],                          lots: 5, area: 320,  description: "Grãos no coração do Cerrado com tecnologia de precisão e rastreabilidade completa." },
@@ -4679,6 +4819,17 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
 
   useEffect(() => {
     if (isViewingOther && viewingFarmId) {
+      // Fazendas de demonstração — dados estáticos, sem API call
+      if (viewingFarmId.startsWith("demo-")) {
+        const demo = DEMO_FULL_DATA[viewingFarmId];
+        if (demo) {
+          setViewedFarm(demo.farm);
+          setViewedLots(demo.lots);
+        }
+        setLoadingLots(false);
+        return;
+      }
+
       let alive = true;
       // Se não temos cache, mostra skeleton; senão apenas busca os lotes
       if (!viewingFarmCache) setViewedFarm(null);
@@ -4687,7 +4838,6 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
       api.farms.getById(viewingFarmId)
         .then(f => {
           if (!alive) return;
-          // Atualiza com dados completos (inclui lotes)
           setViewedFarm(f);
           const apiLots = (f.lots ?? []) as import("./services/api").ApiPublicLot[];
           const mapped: import("./services/api").ApiLot[] = apiLots.map(l => ({
