@@ -621,6 +621,8 @@ interface AppCtx {
   clearLocalSession: () => void;
   setCurrentLotId: (id: string | null) => void;
   setViewingFarmId: (id: string | null) => void;
+  viewingFarmCache: import("./services/api").ApiUser | null;
+  setViewingFarmCache: (farm: import("./services/api").ApiUser | null) => void;
   addToast: (msg: string, type?: Toast["type"]) => void;
   removeToast: (id: string) => void;
   sendProposal: (p: Omit<Proposal, "id" | "createdAt" | "status">) => void;
@@ -676,6 +678,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [currentLotId, setCurrentLotId] = useState<string | null>(null);
   const [viewingFarmId, setViewingFarmId] = useState<string | null>(null);
+  const [viewingFarmCache, setViewingFarmCache] = useState<import("./services/api").ApiUser | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   useEffect(() => {
@@ -935,7 +938,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
   const removeToast = (id: string) => setToasts(p => p.filter(t => t.id !== id));
 
   return (
-    <AppContext.Provider value={{ user, saveUser, lots, addLot, updateLot, deleteLot, addPhotoToLot, deleteAccount, events, proposals, logout, clearLocalSession, currentLotId, setCurrentLotId, viewingFarmId, setViewingFarmId, toasts, addToast, removeToast, sendProposal, updateProposalStatus }}>
+    <AppContext.Provider value={{ user, saveUser, lots, addLot, updateLot, deleteLot, addPhotoToLot, deleteAccount, events, proposals, logout, clearLocalSession, currentLotId, setCurrentLotId, viewingFarmId, setViewingFarmId, viewingFarmCache, setViewingFarmCache, toasts, addToast, removeToast, sendProposal, updateProposalStatus }}>
       {children}
     </AppContext.Provider>
   );
@@ -2484,7 +2487,7 @@ const VITRINE_DEMO: VitrineEntry[] = [
 
 const SVitrine = ({ go }: { go: (s: number) => void }) => {
   const navigate = useNavigate();
-  const { user, sendProposal, addToast, setViewingFarmId } = useContext(AppContext);
+  const { user, sendProposal, addToast, setViewingFarmId, setViewingFarmCache } = useContext(AppContext);
   useSEO({
     title: "Vitrine — Fazendas brasileiras rastreadas",
     description: "Explore fazendas com rastreabilidade certificada por bioma, cultura e região. EUDR, PRODES/INPE e registro digital. Conexão direta com produtores.",
@@ -2553,11 +2556,13 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
 
   // Busca fazendas reais cadastradas no backend (lista pública)
   const [backendFarms, setBackendFarms] = useState<VitrineEntry[]>([]);
+  const [rawBackendFarms, setRawBackendFarms] = useState<import("./services/api").ApiUser[]>([]);
   useEffect(() => {
     if (!API_ENABLED) return;
     let alive = true;
     api.farms.list().then(list => {
       if (!alive) return;
+      setRawBackendFarms(list);
       // Coords padrão por bioma (centro aproximado) — usadas até termos lat/lng no schema
       const BIOME_DEFAULT_COORDS: Record<string, [number, number]> = {
         "cerrado":         [-15.77, -47.92],
@@ -2865,6 +2870,8 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                   </div>
                   {activeEntry.isReal && (
                     <button onClick={() => {
+                      const cached = rawBackendFarms.find(f => f.id === activeEntry.id) ?? null;
+                      setViewingFarmCache(cached);
                       setViewingFarmId(activeEntry.id ?? null);
                       if (activeEntry.id) navigate(`/fazenda/${encodeURIComponent(activeEntry.id)}`);
                       else go(5);
@@ -2909,6 +2916,8 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                   transition={{ delay: Math.min(i * 0.03, 0.3) }}
                   onClick={() => {
                     if (f.isReal) {
+                      const cached = rawBackendFarms.find(r => r.id === f.id) ?? null;
+                      setViewingFarmCache(cached);
                       setViewingFarmId(f.id ?? null);
                       if (f.id) navigate(`/fazenda/${encodeURIComponent(f.id)}`);
                       else go(5);
@@ -4661,26 +4670,26 @@ const SEditProfile = ({ go }: { go: (s: number) => void }) => {
 };
 
 const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
-  const { user, lots, events, addToast, viewingFarmId, setViewingFarmId, sendProposal } = useContext(AppContext);
+  const { user, lots, events, addToast, viewingFarmId, setViewingFarmId, viewingFarmCache, setViewingFarmCache, sendProposal } = useContext(AppContext);
   const isViewingOther = !!viewingFarmId && viewingFarmId !== user?.id;
-  const [viewedFarm, setViewedFarm] = useState<import("./services/api").ApiUser | null>(null);
+  // Inicia com o cache da vitrine (dados já carregados) — renderiza imediatamente
+  const [viewedFarm, setViewedFarm] = useState<import("./services/api").ApiUser | null>(viewingFarmCache);
   const [viewedLots, setViewedLots] = useState<import("./services/api").ApiLot[]>([]);
-  const [loadingFarm, setLoadingFarm] = useState(false);
+  const [loadingLots, setLoadingLots] = useState(isViewingOther);
 
   useEffect(() => {
     if (isViewingOther && viewingFarmId) {
       let alive = true;
-      setLoadingFarm(true);
-      setViewedFarm(null);
+      // Se não temos cache, mostra skeleton; senão apenas busca os lotes
+      if (!viewingFarmCache) setViewedFarm(null);
       setViewedLots([]);
+      setLoadingLots(true);
       api.farms.getById(viewingFarmId)
         .then(f => {
           if (!alive) return;
+          // Atualiza com dados completos (inclui lotes)
           setViewedFarm(f);
-          // Lotes públicos vêm embutidos no GET /api/farms/:id
           const apiLots = (f.lots ?? []) as import("./services/api").ApiPublicLot[];
-          // Mapeia para shape usado no front (status/eudr são opcionais aqui;
-          // só precisamos de id, name, crop, area, polígono pra render)
           const mapped: import("./services/api").ApiLot[] = apiLots.map(l => ({
             id: l.id,
             userId: viewingFarmId,
@@ -4695,15 +4704,15 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           }));
           setViewedLots(mapped);
         })
-        .catch(() => { if (alive) { setViewedFarm(null); setViewedLots([]); } })
-        .finally(() => { if (alive) setLoadingFarm(false); });
+        .catch(() => { if (alive && !viewingFarmCache) { setViewedFarm(null); setViewedLots([]); } })
+        .finally(() => { if (alive) { setLoadingLots(false); setViewingFarmCache(null); } });
       return () => { alive = false; };
     } else {
-      setLoadingFarm(false);
+      setLoadingLots(false);
       setViewedFarm(null);
       setViewedLots([]);
     }
-  }, [viewingFarmId, isViewingOther]);
+  }, [viewingFarmId, isViewingOther]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Display data: viewed farm when browsing public, else logged-in user
   const displayFarmName = isViewingOther ? viewedFarm?.farmName : user?.farmName;
@@ -4882,8 +4891,8 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
       })
       .filter((x): x is { id: string; name: string; crop: string; area?: number | string; points: [number, number][] } => !!x);
 
-  // ── Skeleton de carregamento (só quando visita perfil externo) ──────────────
-  if (isViewingOther && loadingFarm) {
+  // ── Skeleton de carregamento (só quando não há cache — ex: acesso direto por URL) ──
+  if (isViewingOther && loadingLots && !viewedFarm) {
     return (
       <div className="min-h-screen bg-bg pb-32">
         {/* Top bar */}
