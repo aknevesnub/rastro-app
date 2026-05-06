@@ -76,7 +76,8 @@ body {
 }
 
 #root {
-  overflow-x: clip; /* clip não cria scroll container, não bloqueia scroll vertical */
+  /* overflow-x removido — clip/hidden em ancestral bloqueia scroll horizontal
+     de elementos filhos (chips, galerias). Controle de overflow por componente. */
 }
 
 /* ── Typography ── */
