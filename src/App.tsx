@@ -4665,10 +4665,14 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
   const isViewingOther = !!viewingFarmId && viewingFarmId !== user?.id;
   const [viewedFarm, setViewedFarm] = useState<import("./services/api").ApiUser | null>(null);
   const [viewedLots, setViewedLots] = useState<import("./services/api").ApiLot[]>([]);
+  const [loadingFarm, setLoadingFarm] = useState(false);
 
   useEffect(() => {
     if (isViewingOther && viewingFarmId) {
       let alive = true;
+      setLoadingFarm(true);
+      setViewedFarm(null);
+      setViewedLots([]);
       api.farms.getById(viewingFarmId)
         .then(f => {
           if (!alive) return;
@@ -4691,9 +4695,11 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           }));
           setViewedLots(mapped);
         })
-        .catch(() => { if (alive) { setViewedFarm(null); setViewedLots([]); } });
+        .catch(() => { if (alive) { setViewedFarm(null); setViewedLots([]); } })
+        .finally(() => { if (alive) setLoadingFarm(false); });
       return () => { alive = false; };
     } else {
+      setLoadingFarm(false);
       setViewedFarm(null);
       setViewedLots([]);
     }
@@ -4875,6 +4881,49 @@ const SPublicProfile = ({ go }: { go: (s: number) => void }) => {
           : null;
       })
       .filter((x): x is { id: string; name: string; crop: string; area?: number | string; points: [number, number][] } => !!x);
+
+  // ── Skeleton de carregamento (só quando visita perfil externo) ──────────────
+  if (isViewingOther && loadingFarm) {
+    return (
+      <div className="min-h-screen bg-bg pb-32">
+        {/* Top bar */}
+        <div className="sticky top-0 z-40 bg-bg/85 backdrop-blur-xl border-b border-white/8">
+          <div className="max-w-5xl mx-auto px-4 md:px-6 h-14 flex items-center">
+            <button onClick={handleBack} className="flex items-center gap-1.5 text-text/70 hover:text-text transition-colors">
+              <ChevronLeft size={18} />
+              <span className="text-sm font-medium">Voltar</span>
+            </button>
+          </div>
+        </div>
+        {/* Hero placeholder */}
+        <div className="w-full bg-white/5 animate-pulse" style={{ height: "min(65vh, 560px)" }}>
+          <div className="h-full flex flex-col justify-end px-6 pb-8 gap-3">
+            <div className="w-14 h-14 rounded-xl bg-white/10" />
+            <div className="w-56 h-7 rounded-lg bg-white/10" />
+            <div className="w-32 h-4 rounded bg-white/8" />
+          </div>
+        </div>
+        {/* Content placeholders */}
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-8 space-y-6">
+          <div className="space-y-3">
+            <div className="w-3/4 h-5 rounded bg-white/8 animate-pulse" />
+            <div className="w-full h-4 rounded bg-white/6 animate-pulse" />
+            <div className="w-5/6 h-4 rounded bg-white/6 animate-pulse" />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {[80, 64, 96, 72].map(w => (
+              <div key={w} className="h-7 rounded-full bg-white/8 animate-pulse" style={{ width: w }} />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {[1,2,3].map(i => (
+              <div key={i} className="rounded-xl bg-white/5 animate-pulse h-28" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="min-h-screen bg-bg pb-32 md:pb-16">
