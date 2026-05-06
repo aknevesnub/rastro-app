@@ -776,6 +776,7 @@ const AppProvider = ({ children }: { children: React.ReactNode }) => {
         logoTransform: d.logoTransform,
         coverTransform: d.coverTransform,
         profileMode: d.profileMode,
+        isPublic: d.isPublic,
         products: d.products,
         certs: d.certs,
       }).catch(() => { /* silencioso \u2014 localStorage j\u00e1 salvou */ });
