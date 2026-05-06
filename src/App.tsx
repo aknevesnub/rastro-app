@@ -2542,6 +2542,15 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
     };
   }, [user]);
 
+  // Garante que isPublic=false chegue ao backend se o user optou por privado
+  // (cobre casos em que saves anteriores não tinham o campo)
+  useEffect(() => {
+    if (!API_ENABLED || !api.token.get()) return;
+    if (user?.isPublic === false) {
+      api.farms.update({ isPublic: false }).catch(() => {});
+    }
+  }, [user?.isPublic]);
+
   // Busca fazendas reais cadastradas no backend (lista pública)
   const [backendFarms, setBackendFarms] = useState<VitrineEntry[]>([]);
   useEffect(() => {
@@ -2590,9 +2599,17 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
   }, []);
 
   const allEntries = useMemo(() => {
-    // Evita duplicar a fazenda do user logado (que já está em realEntry)
+    // Remove a fazenda do user logado do backendFarms:
+    // — por ID (mais confiável) ou por nome (fallback)
+    // — também remove se user optou por privado (isPublic===false), mesmo que o DB ainda
+    //   não tenha sido atualizado (evita flash de visibilidade após salvar)
+    const myId   = user?.id;
     const myName = (user?.farmName || "").toLowerCase().trim();
-    const others = backendFarms.filter(f => f.farmName.toLowerCase().trim() !== myName);
+    const others = backendFarms.filter(f => {
+      if (myId && f.id === myId) return false;
+      if (myName && f.farmName.toLowerCase().trim() === myName) return false;
+      return true;
+    });
     return [...(realEntry ? [realEntry] : []), ...others, ...VITRINE_DEMO];
   }, [realEntry, backendFarms, user]);
   const allCrops = useMemo(() => Array.from(new Set(allEntries.flatMap(e => e.products))), [allEntries]);
