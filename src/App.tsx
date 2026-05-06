@@ -2800,9 +2800,9 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
             </button>
           </div>
         </div>
-        {/* Chips row — touch-action:pan-x é obrigatório para scroll por toque no iOS Safari dentro de sticky */}
-        <div className="bg-bg/95" style={{ overflowX: "scroll", overflowY: "hidden", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", touchAction: "pan-x", overscrollBehaviorX: "contain", transform: "translateZ(0)" } as React.CSSProperties}>
-          <div style={{ display: "inline-flex", gap: "8px", paddingLeft: "20px", paddingRight: "20px", paddingBottom: "12px" }}>
+        {/* Chips row — flex-wrap: sem scroll, chips quebram em linhas */}
+        <div className="bg-bg/95 px-5 md:px-8 pb-3">
+          <div className="flex flex-wrap gap-2">
             {Object.entries(BIOME_CONFIG).map(([key, cfg]) => {
               const active = selectedBiome === key;
               return (
@@ -2814,7 +2814,7 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
                 </button>
               );
             })}
-            <span className="w-px bg-white/10 mx-1" />
+            <span className="w-px bg-white/10 self-stretch" />
             {allCrops.map(c => {
               const active = selectedCrop === c;
               return (
