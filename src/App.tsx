@@ -2776,10 +2776,10 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
       </div>
 
       {/* ── Barra sticky: busca + filtros ── */}
-      <div className="sticky top-0 z-40 bg-bg/95 backdrop-blur-xl border-b border-white/8">
-        {/* Linha 1: busca + toggle mapa */}
-        <div className="max-w-6xl mx-auto px-5 md:px-8 pt-3 pb-2">
-          <div className="flex items-center gap-2">
+      <div className="sticky top-0 z-40 border-b border-white/8">
+        {/* Search row — backdrop-blur isolado aqui para não clipar os chips */}
+        <div className="bg-bg/95 backdrop-blur-xl px-5 md:px-8 pt-3 pb-2">
+          <div className="max-w-6xl mx-auto flex items-center gap-2">
             <div className="flex items-center gap-2 flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 focus-within:border-accent/40 transition-colors">
               <Search size={14} className="text-text/40 shrink-0" />
               <input
@@ -2800,35 +2800,37 @@ const SVitrine = ({ go }: { go: (s: number) => void }) => {
             </button>
           </div>
         </div>
-        {/* Linha 2: chips de bioma + cultura — full-bleed para scroll sem clip */}
-        <div className="flex gap-2 overflow-x-auto px-5 md:px-8 pb-3" style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}>
-          {Object.entries(BIOME_CONFIG).map(([key, cfg]) => {
-            const active = selectedBiome === key;
-            return (
-              <button key={key} onClick={() => setSelectedBiome(active ? null : key)}
-                style={active ? { background: cfg.color, borderColor: cfg.color, color: "#0A0A0A" } : {}}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-all shrink-0 ${active ? "" : "border-white/12 text-text/60 hover:border-white/25 hover:text-text"}`}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? "#0A0A0A" : cfg.color }} />
-                {cfg.label}
+        {/* Chips row — sem backdrop-blur para não clipar overflow-x-auto no WebKit */}
+        <div className="bg-bg/95 overflow-x-auto" style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}>
+          <div className="flex gap-2 px-5 md:px-8 pb-3 w-max">
+            {Object.entries(BIOME_CONFIG).map(([key, cfg]) => {
+              const active = selectedBiome === key;
+              return (
+                <button key={key} onClick={() => setSelectedBiome(active ? null : key)}
+                  style={active ? { background: cfg.color, borderColor: cfg.color, color: "#0A0A0A" } : {}}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-all ${active ? "" : "border-white/12 text-text/60 hover:border-white/25 hover:text-text"}`}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? "#0A0A0A" : cfg.color }} />
+                  {cfg.label}
+                </button>
+              );
+            })}
+            <span className="w-px bg-white/10 mx-1" />
+            {allCrops.map(c => {
+              const active = selectedCrop === c;
+              return (
+                <button key={c} onClick={() => setSelectedCrop(active ? null : c)}
+                  className={`px-3.5 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-all ${active ? "bg-accent text-bg border-accent" : "border-white/12 text-text/60 hover:border-white/25 hover:text-text"}`}>
+                  {c}
+                </button>
+              );
+            })}
+            {hasFilters && (
+              <button onClick={() => { setSelectedMode(null); setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
+                className="px-3.5 py-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors underline underline-offset-4">
+                Limpar tudo
               </button>
-            );
-          })}
-          <span className="w-px bg-white/10 mx-1 shrink-0" />
-          {allCrops.map(c => {
-            const active = selectedCrop === c;
-            return (
-              <button key={c} onClick={() => setSelectedCrop(active ? null : c)}
-                className={`px-3.5 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-all shrink-0 ${active ? "bg-accent text-bg border-accent" : "border-white/12 text-text/60 hover:border-white/25 hover:text-text"}`}>
-                {c}
-              </button>
-            );
-          })}
-          {hasFilters && (
-            <button onClick={() => { setSelectedMode(null); setSelectedBiome(null); setSelectedCrop(null); setLocationSearch(""); }}
-              className="shrink-0 px-3.5 py-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors underline underline-offset-4">
-              Limpar tudo
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
